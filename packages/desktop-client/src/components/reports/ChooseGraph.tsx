@@ -9,6 +9,7 @@ import { AreaGraph } from './graphs/AreaGraph';
 import { BarGraph } from './graphs/BarGraph';
 import { BarLineGraph } from './graphs/BarLineGraph';
 import { DonutGraph } from './graphs/DonutGraph';
+import { SankeyGraph } from './graphs/SankeyGraph';
 import { LineGraph } from './graphs/LineGraph';
 import { StackedBarGraph } from './graphs/StackedBarGraph';
 import { ReportTable } from './graphs/tableGraph/ReportTable';
@@ -145,6 +146,15 @@ export function ChooseGraph({
         showHiddenCategories={showHiddenCategories}
         showOffBudget={showOffBudget}
         showTooltip={showTooltip}
+      />
+    );
+  }
+  if (graphType === 'SankeyGraph') {
+    return (
+      <SankeyGraph
+        style={graphStyle}
+        compact={compact}
+        data={data}
       />
     );
   }

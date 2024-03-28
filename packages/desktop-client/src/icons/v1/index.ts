@@ -70,6 +70,7 @@ export { SvgCalendar } from './Calendar';
 export { SvgCamera } from './Camera';
 export { SvgChartArea } from './ChartArea';
 export { SvgChartBar } from './ChartBar';
+export { SvgChartSankey } from './ChartSankey';
 export { SvgChartPie } from './ChartPie';
 export { SvgChart } from './Chart';
 export { SvgChatBubbleDots } from './ChatBubbleDots';
