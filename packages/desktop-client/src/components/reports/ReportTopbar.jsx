@@ -4,6 +4,7 @@ import {
   SvgCalculator,
   SvgChartBar,
   SvgChartPie,
+  SvgChartSankey,
   SvgListBullet,
   SvgQueue,
   SvgTag,
@@ -101,6 +102,20 @@ export function ReportTopbar({
         disabled={disabledItems('DonutGraph')}
       >
         <SvgChartPie width={15} height={15} />
+      </GraphButton>
+      <GraphButton
+        title="Sankey Diagram"
+        selected={customReportItems.graphType === 'SankeyGraph'}
+        onSelect={() => {
+          onReportChange({ type: 'modify' });
+          setGraphType('SankeyGraph');
+          setTypeDisabled([]);
+          setBalanceType('Net');
+        }}
+        style={{ marginRight: 15 }}
+        disabled={customReportItems.mode === 'total' ? false : true}
+      >
+        <SvgChartSankey width={15} height={15} />
       </GraphButton>
       <View
         style={{
