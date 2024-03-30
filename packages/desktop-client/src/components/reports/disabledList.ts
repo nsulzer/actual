@@ -30,6 +30,13 @@ const totalGraphOptions = [
     disabledType: ['Net'],
     defaultType: 'Payment',
   },
+  {
+    description: 'SankeyGraph',
+    disabledSplit: [],
+    defaultSplit: 'Category',
+    disabledType: [],
+    defaultType: 'Net',
+  },
 ];
 
 const timeGraphOptions = [
@@ -61,7 +68,7 @@ const modeOptions = [
   {
     description: 'time',
     graphs: timeGraphOptions,
-    disabledGraph: ['AreaGraph', 'DonutGraph'],
+    disabledGraph: ['AreaGraph', 'DonutGraph', 'SankeyGraph'],
     defaultGraph: 'TableGraph',
   },
 ];
