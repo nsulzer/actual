@@ -143,11 +143,10 @@ export function ReportTopbar({
         onSelect={() => {
           onReportChange({ type: 'modify' });
           setGraphType('SankeyGraph');
-          setTypeDisabled([]);
-          setBalanceType('Net');
+          defaultItems('SankeyGraph');
         }}
         style={{ marginRight: 15 }}
-        disabled={customReportItems.mode === 'total' ? false : true}
+        disabled={disabledItems('SankeyGraph')}
       >
         <SvgChartSankey width={15} height={15} />
       </GraphButton>
