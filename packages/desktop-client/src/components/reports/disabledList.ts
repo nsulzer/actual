@@ -60,7 +60,7 @@ const totalGraphOptions: graphOptions[] = [
   },
   {
     description: 'SankeyGraph',
-    disabledSplit: [],
+    disabledSplit: ['Interval'],
     defaultSplit: 'Category',
     disabledType: [],
     defaultType: 'Net',

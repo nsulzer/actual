@@ -11,7 +11,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-import {amountToCurrency} from 'loot-core/src/shared/util';
+import { amountToCurrency } from 'loot-core/src/shared/util';
 import { type GroupedEntity } from 'loot-core/src/types/models/reports';
 
 import { theme, type CSSProperties } from '../../../style';
@@ -62,39 +62,105 @@ function SankeyNode({ x, y, width, height, index, payload, containerWidth }) {
   );
 }
 
-function convertToSankey(data, compact:boolean) {
+function convertToSankey(data, groupBy: string) {
   // convert to nodes and edges
-  // Income -> Budget -> Group -> Category TODO: Groups, other views
+  // Split types:
+  // Category:  Income Category -> Budget -> Group -> Category
+  // Group:     Income          -> Budget -> Group
+  // Payee:     Payee in -> Budget -> Payee Out
+  // Accuount:  Account in balance -> Budget -> Account out balance (not totals)
   const nodes = [];
   const links = [];
-  const nodeNames = new Set();
+  const nodeNames = [];
 
-  nodes.push({ name: 'Budget'});
-  nodeNames.add('Budget');
+  nodes.push({ name: 'Budget' });
+  nodeNames.push('Budget');
 
-  data.data.forEach(d => {
-    nodes.push({ name: d.name });
-    nodeNames.add(d.name);
-    if (d.totalTotals < 0) {
-      links.push({
-        source: 'Budget',
-        target: d.name,
-        value: -amountToInteger(d.totalTotals),
+  if (groupBy === 'Category') {
+    data.groupedData.forEach(group => {
+      nodes.push({ name: group.name });
+      nodeNames.push(group.name);
+      if (group.totalTotals < 0) {
+        links.push({
+          source: 'Budget',
+          target: group.name,
+          value: -amountToInteger(group.totalTotals),
+        });
+      } else {
+        links.push({
+          source: group.name,
+          target: 'Budget',
+          value: amountToInteger(group.totalTotals),
+        });
+      }
+      group.categories.forEach(category => {
+        nodes.push({ name: category.name });
+        nodeNames.push(group.name + category.name);
+        if (category.totalTotals < 0) {
+          links.push({
+            source: group.name,
+            target: group.name + category.name,
+            value: -amountToInteger(category.totalTotals),
+          });
+        } else {
+          links.push({
+            source: group.name + category.name,
+            target: group.name,
+            value: amountToInteger(category.totalTotals),
+          });
+        }
       });
-    } else {
-      links.push({
-        source: d.name,
-        target: 'Budget',
-        value: amountToInteger(d.totalTotals),
-      });
-    }
-  });
-
-    // Map source and target in links to the index of the node
-    links.forEach(link => {
-      link.source = nodes.findIndex(node => node.name === link.source);
-      link.target = nodes.findIndex(node => node.name === link.target);
     });
+  } else if (groupBy === 'Account') {
+    data.data.forEach(split => {
+      nodes.push({ name: split.name });
+      nodeNames.push(split.name + 'out');
+      {
+        split.totalDebts < 0 && (
+          links.push({
+            source: 'Budget',
+            target: split.name + 'out',
+            value: -amountToInteger(split.totalDebts),
+          })
+        )
+      };
+      nodes.push({ name: split.name });
+      nodeNames.push(split.name + 'in');
+      {
+        split.totalAssets > 0 && (
+          links.push({
+            source: split.name + 'in',
+            target: 'Budget',
+            value: amountToInteger(split.totalAssets),
+          })
+        )
+      };
+    })
+  } else {  // Group or Payee
+    data.data.forEach(split => {
+      nodes.push({ name: split.name });
+      nodeNames.push(split.name);
+      if (split.totalTotals < 0) {
+        links.push({
+          source: 'Budget',
+          target: split.name,
+          value: -amountToInteger(split.totalTotals),
+        });
+      } else {
+        links.push({
+          source: split.name,
+          target: 'Budget',
+          value: amountToInteger(split.totalTotals),
+        });
+      }
+    });
+  };
+
+  // Map source and target in links to the index of the node
+  links.forEach(link => {
+    link.source = nodeNames.findIndex(node => node === link.source);
+    link.target = nodeNames.findIndex(node => node === link.target);
+  });
 
   return {
     nodes: nodes,
@@ -105,7 +171,7 @@ function convertToSankey(data, compact:boolean) {
 type SankeyGraphProps = {
   style?: CSSProperties;
   data: GroupedEntity;
-  balanceTypeOp: string;
+  groupBy: string;
   compact?: boolean;
   viewLabels: boolean;
 };
@@ -113,12 +179,12 @@ type SankeyGraphProps = {
 export function SankeyGraph({
   style,
   data,
-  balanceTypeOp,
+  groupBy,
   compact,
   viewLabels,
 }: SankeyGraphProps) {
 
-  const sankeyData = convertToSankey(data, compact)
+  const sankeyData = convertToSankey(data, groupBy)
 
   const margin = {
     left: 0,
@@ -145,7 +211,7 @@ export function SankeyGraph({
                 width={width}
                 height={height}
                 data={sankeyData}
-                node={compact? null : props => <SankeyNode {...props} containerWidth={width} />}
+                node={compact ? null : props => <SankeyNode {...props} containerWidth={width} />}
                 sort={true}
                 iterations={1000}
                 nodePadding={padding}
