@@ -129,8 +129,10 @@ export function ChooseGraph({
     return (
       <SankeyGraph
         style={graphStyle}
+        groupBy={groupBy}
         compact={compact}
         data={data}
+        viewLabels={viewLabels}
       />
     );
   }

@@ -32,7 +32,7 @@ const totalGraphOptions = [
   },
   {
     description: 'SankeyGraph',
-    disabledSplit: [],
+    disabledSplit: ['Interval'],
     defaultSplit: 'Category',
     disabledType: [],
     defaultType: 'Net',
