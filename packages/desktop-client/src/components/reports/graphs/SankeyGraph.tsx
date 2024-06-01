@@ -1,34 +1,91 @@
 // @ts-strict-ignore
 import React from 'react';
 
+import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
 import { css } from 'glamor';
 import {
   Sankey,
   Tooltip,
   Rectangle,
   Layer,
-  Sector,
-  ResponsiveContainer
+  ResponsiveContainer,
 } from 'recharts';
 
 import { amountToCurrency } from 'loot-core/src/shared/util';
-import { type GroupedEntity } from 'loot-core/src/types/models/reports';
+import { type DataEntity } from 'loot-core/src/types/models/reports';
+import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { theme, type CSSProperties } from '../../../style';
+import { AlignedText } from '../../common/AlignedText';
 import { PrivacyFilter } from '../../PrivacyFilter';
 import { Container } from '../Container';
 import { numberFormatterTooltip } from '../numberFormatter';
 
-import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
+type CustomTooltipProps = {
+  active?: boolean;
+  payload?;
+  balanceTypeOp: 'totalAssets' | 'totalTotals' | 'totalDebts';
+};
 
-function SankeyNode({ x, y, width, height, index, payload, containerWidth }) {
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    return (
+      <div
+        className={`${css({
+          zIndex: 1000,
+          pointerEvents: 'none',
+          borderRadius: 2,
+          boxShadow: '0 1px 6px rgba(0, 0, 0, .20)',
+          backgroundColor: theme.menuBackground,
+          color: theme.menuItemText,
+          padding: 10,
+        })}`}
+      >
+        <div>
+          {payload[0].payload.payload.source && (
+            <div style={{ marginBottom: 10 }}>
+              From <strong>{payload[0].payload.payload.source.name}</strong> to{' '}
+              <strong>{payload[0].payload.payload.target.name}</strong>
+            </div>
+          )}
+          {payload[0].payload.payload.name && (
+            <div style={{ marginBottom: 10 }}>
+              <strong>{payload[0].name}</strong>
+            </div>
+          )}
+          <div style={{ lineHeight: 1.5 }}>
+            <AlignedText
+              left=""
+              right={
+                <PrivacyFilter>
+                  {amountToCurrency(payload[0].value)}
+                </PrivacyFilter>
+              }
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div />;
+};
+
+function SankeyNode({
+  x,
+  y,
+  width,
+  height,
+  index,
+  payload,
+  containerWidth,
+  compact,
+}) {
   const isOut = x + width + 6 > containerWidth;
-  let payloadValue = amountToCurrency(integerToAmount(payload.value));
-  // if (payload.value < 1000) {
-  //   payloadValue = '<1k';
-  // } else {
-  //   payloadValue = payloadValue + 'k';
-  // }
+  const payloadValue = amountToCurrency(integerToAmount(payload.value));
+
+  const display = compact ? 'none' : 'inline';
+
   return (
     <Layer key={`CustomNode${index}`}>
       <Rectangle
@@ -36,7 +93,7 @@ function SankeyNode({ x, y, width, height, index, payload, containerWidth }) {
         y={y}
         width={width}
         height={height}
-        fill="#5192ca"
+        fill={payload.color}
         fillOpacity="1"
       />
       <text
@@ -44,20 +101,22 @@ function SankeyNode({ x, y, width, height, index, payload, containerWidth }) {
         x={isOut ? x - 6 : x + width + 6}
         y={y + height / 2}
         fontSize="13"
+        fill={theme.pageText}
+        display={display}
       >
         {payload.name}
       </text>
-      <PrivacyFilter>
-        <text
-          textAnchor={isOut ? 'end' : 'start'}
-          x={isOut ? x - 6 : x + width + 6}
-          y={y + height / 2 + 13}
-          fontSize="9"
-          strokeOpacity="0.5"
-        >
-          {payloadValue}
-        </text>
-      </PrivacyFilter>
+      <text
+        textAnchor={isOut ? 'end' : 'start'}
+        x={isOut ? x - 6 : x + width + 6}
+        y={y + height / 2 + 13}
+        fontSize="10"
+        strokeOpacity="1"
+        fill={theme.pageText}
+        display={display}
+      >
+        <PrivacyFilter>{payloadValue}</PrivacyFilter>
+      </text>
     </Layer>
   );
 }
@@ -115,28 +174,25 @@ function convertToSankey(data, groupBy: string) {
     data.data.forEach(split => {
       nodes.push({ name: split.name });
       nodeNames.push(split.name + 'out');
-      {
-        split.totalDebts < 0 && (
-          links.push({
-            source: 'Budget',
-            target: split.name + 'out',
-            value: -amountToInteger(split.totalDebts),
-          })
-        )
-      };
+      if (split.totalDebts < 0) {
+        links.push({
+          source: 'Budget',
+          target: split.name + 'out',
+          value: -amountToInteger(split.totalDebts),
+        });
+      }
       nodes.push({ name: split.name });
       nodeNames.push(split.name + 'in');
-      {
-        split.totalAssets > 0 && (
-          links.push({
-            source: split.name + 'in',
-            target: 'Budget',
-            value: amountToInteger(split.totalAssets),
-          })
-        )
-      };
-    })
-  } else {  // Group or Payee
+      if (split.totalAssets > 0) {
+        links.push({
+          source: split.name + 'in',
+          target: 'Budget',
+          value: amountToInteger(split.totalAssets),
+        });
+      }
+    });
+  } else {
+    // Group or Payee
     data.data.forEach(split => {
       nodes.push({ name: split.name });
       nodeNames.push(split.name);
@@ -154,7 +210,7 @@ function convertToSankey(data, groupBy: string) {
         });
       }
     });
-  };
+  }
 
   // Map source and target in links to the index of the node
   links.forEach(link => {
@@ -162,29 +218,45 @@ function convertToSankey(data, groupBy: string) {
     link.target = nodeNames.findIndex(node => node === link.target);
   });
 
+  nodes.forEach(node => {
+    const result = data.legend.find(leg => leg.name === node.name);
+    if (result !== undefined) {
+      node.color = result.color;
+    } else {
+      node.color = theme.pageTextLight;
+    }
+  });
+
   return {
-    nodes: nodes,
-    links: links
-  }
+    nodes,
+    links,
+  };
 }
 
 type SankeyGraphProps = {
   style?: CSSProperties;
-  data: GroupedEntity;
+  data: DataEntity;
+  filters: RuleConditionEntity[];
   groupBy: string;
+  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
   compact?: boolean;
   viewLabels: boolean;
+  showHiddenCategories?: boolean;
+  showOffBudget?: boolean;
 };
 
 export function SankeyGraph({
   style,
   data,
+  filters,
   groupBy,
+  balanceTypeOp,
   compact,
   viewLabels,
+  showHiddenCategories,
+  showOffBudget,
 }: SankeyGraphProps) {
-
-  const sankeyData = convertToSankey(data, groupBy)
+  const sankeyData = convertToSankey(data, groupBy);
 
   const margin = {
     left: 0,
@@ -203,7 +275,8 @@ export function SankeyGraph({
       }}
     >
       {(width, height) =>
-        (sankeyData.links && sankeyData.links.length > 0) && (
+        sankeyData.links &&
+        sankeyData.links.length > 0 && (
           <ResponsiveContainer>
             <div>
               {!compact && <div style={{ marginTop: '15px' }} />}
@@ -211,16 +284,23 @@ export function SankeyGraph({
                 width={width}
                 height={height}
                 data={sankeyData}
-                node={compact ? null : props => <SankeyNode {...props} containerWidth={width} />}
+                node={props => (
+                  <SankeyNode
+                    {...props}
+                    containerWidth={width}
+                    compact={compact}
+                  />
+                )}
                 sort={true}
                 iterations={1000}
                 nodePadding={padding}
                 margin={margin}
+                link={{ stroke: theme.pageBackground, strokeOpacity: 1 }}
               >
                 <Tooltip
+                  content={<CustomTooltip balanceTypeOp={balanceTypeOp} />}
                   formatter={numberFormatterTooltip}
                   isAnimationActive={false}
-                  separator=": "
                 />
               </Sankey>
             </div>
