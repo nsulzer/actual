@@ -10,8 +10,8 @@ import { AreaGraph } from './graphs/AreaGraph';
 import { BarGraph } from './graphs/BarGraph';
 import { BarLineGraph } from './graphs/BarLineGraph';
 import { DonutGraph } from './graphs/DonutGraph';
-import { SankeyGraph } from './graphs/SankeyGraph';
 import { LineGraph } from './graphs/LineGraph';
+import { SankeyGraph } from './graphs/SankeyGraph';
 import { StackedBarGraph } from './graphs/StackedBarGraph';
 import { ReportTable } from './graphs/tableGraph/ReportTable';
 import { ReportOptions } from './ReportOptions';
@@ -141,9 +141,9 @@ export function ChooseGraph({
     return (
       <SankeyGraph
         style={graphStyle}
-        groupBy={groupBy}
         compact={compact}
         data={data}
+        groupBy={groupBy}
         viewLabels={viewLabels}
       />
     );
