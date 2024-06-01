@@ -141,12 +141,10 @@ export function ReportTopbar({
         title="Sankey Diagram"
         selected={customReportItems.graphType === 'SankeyGraph'}
         onSelect={() => {
-          onReportChange({ type: 'modify' });
-          setGraphType('SankeyGraph');
-          defaultItems('SankeyGraph');
+          onChangeGraph('SankeyGraph');
         }}
         style={{ marginRight: 15 }}
-        disabled={disabledItems('SankeyGraph')}
+        disabled={isItemDisabled('SankeyGraph')}
       >
         <SvgChartSankey width={15} height={15} />
       </GraphButton>
