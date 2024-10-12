@@ -58,7 +58,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
               left=""
               right={
                 <PrivacyFilter>
-                  {amountToCurrency(payload[0].value)}
+                  {amountToCurrency(integerToAmount(payload[0].value))}
                 </PrivacyFilter>
               }
             />
@@ -243,6 +243,7 @@ type SankeyGraphProps = {
   viewLabels: boolean;
   showHiddenCategories?: boolean;
   showOffBudget?: boolean;
+  showTooltip?: boolean;
 };
 
 export function SankeyGraph({
@@ -255,6 +256,7 @@ export function SankeyGraph({
   viewLabels,
   showHiddenCategories,
   showOffBudget,
+  showTooltip = true,
 }: SankeyGraphProps) {
   const sankeyData = convertToSankey(data, groupBy);
 
@@ -297,11 +299,13 @@ export function SankeyGraph({
                 margin={margin}
                 link={{ stroke: theme.pageBackground, strokeOpacity: 1 }}
               >
-                <Tooltip
-                  content={<CustomTooltip balanceTypeOp={balanceTypeOp} />}
-                  formatter={numberFormatterTooltip}
-                  isAnimationActive={false}
-                />
+                {showTooltip && (
+                  <Tooltip
+                    content={<CustomTooltip balanceTypeOp={balanceTypeOp} />}
+                    formatter={numberFormatterTooltip}
+                    isAnimationActive={false}
+                  />
+                )}
               </Sankey>
             </div>
           </ResponsiveContainer>
