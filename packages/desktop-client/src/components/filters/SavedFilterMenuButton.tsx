@@ -1,10 +1,12 @@
 import React, { useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { send, sendCatch } from 'loot-core/src/platform/client/fetch';
+import { type TransactionFilterEntity } from 'loot-core/types/models';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { SvgExpandArrow } from '../../icons/v0';
-import { Button } from '../common/Button';
+import { Button } from '../common/Button2';
 import { Popover } from '../common/Popover';
 import { Text } from '../common/Text';
 import { View } from '../common/View';
@@ -14,27 +16,28 @@ import { NameFilter } from './NameFilter';
 
 export type SavedFilter = {
   conditions?: RuleConditionEntity[];
-  conditionsOp?: string;
+  conditionsOp?: 'and' | 'or';
   id?: string;
   name: string;
   status?: string;
 };
 
 export function SavedFilterMenuButton({
-  filters,
+  conditions,
   conditionsOp,
   filterId,
   onClearFilters,
   onReloadSavedFilter,
-  filtersList,
+  savedFilters,
 }: {
-  filters: RuleConditionEntity[];
-  conditionsOp: string;
+  conditions: RuleConditionEntity[];
+  conditionsOp: 'and' | 'or';
   filterId: SavedFilter;
   onClearFilters: () => void;
   onReloadSavedFilter: (savedFilter: SavedFilter, value?: string) => void;
-  filtersList: RuleConditionEntity[];
+  savedFilters: TransactionFilterEntity[];
 }) {
+  const { t } = useTranslation();
   const [nameOpen, setNameOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,7 +67,7 @@ export function SavedFilterMenuButton({
         setAdding(false);
         setMenuOpen(false);
         savedFilter = {
-          conditions: filters,
+          conditions,
           conditionsOp,
           id: filterId.id,
           name: filterId.name,
@@ -72,7 +75,7 @@ export function SavedFilterMenuButton({
         };
         const response = await sendCatch('filter-update', {
           state: savedFilter,
-          filters: [...filtersList],
+          filters: [...savedFilters],
         });
 
         if (response.error) {
@@ -108,7 +111,7 @@ export function SavedFilterMenuButton({
   async function onAddUpdate() {
     if (adding) {
       const newSavedFilter = {
-        conditions: filters,
+        conditions,
         conditionsOp,
         name,
         status: 'saved',
@@ -116,7 +119,7 @@ export function SavedFilterMenuButton({
 
       const response = await sendCatch('filter-create', {
         state: newSavedFilter,
-        filters: [...filtersList],
+        filters: [...savedFilters],
       });
 
       if (response.error) {
@@ -142,7 +145,7 @@ export function SavedFilterMenuButton({
 
     const response = await sendCatch('filter-update', {
       state: updatedFilter,
-      filters: [...filtersList],
+      filters: [...savedFilters],
     });
 
     if (response.error) {
@@ -157,12 +160,12 @@ export function SavedFilterMenuButton({
 
   return (
     <View>
-      {filters.length > 0 && (
+      {conditions.length > 0 && (
         <Button
           ref={triggerRef}
-          type="bare"
+          variant="bare"
           style={{ marginTop: 10 }}
-          onClick={() => {
+          onPress={() => {
             setMenuOpen(true);
           }}
         >
@@ -175,10 +178,12 @@ export function SavedFilterMenuButton({
               flexShrink: 0,
             }}
           >
-            {!filterId.id ? 'Unsaved filter' : filterId.name}&nbsp;
+            {!filterId.id ? t('Unsaved filter') : filterId.name}&nbsp;
           </Text>
           {filterId.id && filterId.status !== 'saved' && (
-            <Text>(modified)&nbsp;</Text>
+            <Text>
+              <Trans>(modified)</Trans>&nbsp;
+            </Text>
           )}
           <SvgExpandArrow width={8} height={8} style={{ marginRight: 5 }} />
         </Button>

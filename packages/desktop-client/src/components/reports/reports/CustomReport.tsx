@@ -3,11 +3,13 @@ import { useLocation } from 'react-router-dom';
 
 import * as d from 'date-fns';
 
+import { calculateHasWarning } from 'loot-core/src/client/reports';
 import { send } from 'loot-core/src/platform/client/fetch';
 import * as monthUtils from 'loot-core/src/shared/months';
 import { amountToCurrency } from 'loot-core/src/shared/util';
 import { type CategoryEntity } from 'loot-core/types/models/category';
 import {
+  type balanceTypeOpType,
   type CustomReportEntity,
   type DataEntity,
 } from 'loot-core/types/models/reports';
@@ -19,8 +21,10 @@ import { useFilters } from '../../../hooks/useFilters';
 import { useLocalPref } from '../../../hooks/useLocalPref';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { usePayees } from '../../../hooks/usePayees';
+import { useSyncedPref } from '../../../hooks/useSyncedPref';
 import { useResponsive } from '../../../ResponsiveProvider';
 import { theme, styles } from '../../../style';
+import { Warning } from '../../alerts';
 import { AlignedText } from '../../common/AlignedText';
 import { Block } from '../../common/Block';
 import { Text } from '../../common/Text';
@@ -54,10 +58,53 @@ import { createGroupedSpreadsheet } from '../spreadsheets/grouped-spreadsheet';
 import { useReport } from '../useReport';
 import { fromDateRepr } from '../util';
 
+/**
+ * Transform `selectedCategories` into `conditions`.
+ */
+function useSelectedCategories(
+  conditions: RuleConditionEntity[],
+  categories: CategoryEntity[],
+): CategoryEntity[] {
+  const existingCategoryCondition = useMemo(
+    () => conditions.find(({ field }) => field === 'category'),
+    [conditions],
+  );
+
+  return useMemo(() => {
+    if (!existingCategoryCondition) {
+      return categories;
+    }
+
+    switch (existingCategoryCondition.op) {
+      case 'is':
+        return categories.filter(
+          ({ id }) => id === existingCategoryCondition.value,
+        );
+
+      case 'isNot':
+        return categories.filter(
+          ({ id }) => existingCategoryCondition.value !== id,
+        );
+
+      case 'oneOf':
+        return categories.filter(({ id }) =>
+          existingCategoryCondition.value.includes(id),
+        );
+
+      case 'notOneOf':
+        return categories.filter(
+          ({ id }) => !existingCategoryCondition.value.includes(id),
+        );
+    }
+
+    return categories;
+  }, [existingCategoryCondition, categories]);
+}
+
 export function CustomReport() {
   const categories = useCategories();
   const { isNarrowWidth } = useResponsive();
-  const [_firstDayOfWeekIdx] = useLocalPref('firstDayOfWeekIdx');
+  const [_firstDayOfWeekIdx] = useSyncedPref('firstDayOfWeekIdx');
   const firstDayOfWeekIdx = _firstDayOfWeekIdx || '0';
 
   const [viewLegend = false, setViewLegendPref] =
@@ -68,12 +115,12 @@ export function CustomReport() {
     useLocalPref('reportsViewLabel');
 
   const {
-    filters,
+    conditions,
     conditionsOp,
     onApply: onApplyFilter,
     onDelete: onDeleteFilter,
     onUpdate: onUpdateFilter,
-    onCondOpChange,
+    onConditionsOpChange,
   } = useFilters();
 
   const location = useLocation();
@@ -90,7 +137,7 @@ export function CustomReport() {
     ? JSON.parse(reportFromSessionStorage)
     : {};
   const combine = location.state
-    ? location.state.report ?? defaultReport
+    ? (location.state.report ?? defaultReport)
     : defaultReport;
   const loadReport = { ...combine, ...session };
 
@@ -101,9 +148,65 @@ export function CustomReport() {
     }>
   >([]);
 
-  const [selectedCategories, setSelectedCategories] = useState(
-    loadReport.selectedCategories,
-  );
+  // Complex category conditions are:
+  // - conditions with multiple "category" fields
+  // - conditions with "category" field that use "contains", "doesNotContain" or "matches" operations
+  const isComplexCategoryCondition =
+    !!conditions.find(
+      ({ field, op }) =>
+        field === 'category' &&
+        ['contains', 'doesNotContain', 'matches', 'hasTags'].includes(op),
+    ) || conditions.filter(({ field }) => field === 'category').length >= 2;
+
+  const setSelectedCategories = (newCategories: CategoryEntity[]) => {
+    const newCategoryIdSet = new Set(newCategories.map(({ id }) => id));
+    const allCategoryIds = categories.list.map(({ id }) => id);
+    const allCategoriesSelected = !allCategoryIds.find(
+      id => !newCategoryIdSet.has(id),
+    );
+    const newCondition = {
+      field: 'category',
+      op: 'oneOf',
+      value: newCategories.map(({ id }) => id),
+      type: 'id',
+    } satisfies RuleConditionEntity;
+
+    const existingCategoryCondition = conditions.find(
+      ({ field }) => field === 'category',
+    );
+
+    // If the existing conditions already have one for "category" - replace it
+    if (existingCategoryCondition) {
+      // If we selected all categories - remove the filter (default state)
+      if (allCategoriesSelected) {
+        onDeleteFilter(existingCategoryCondition);
+        return;
+      }
+
+      // Update the "notOneOf" condition if it's already set
+      if (existingCategoryCondition.op === 'notOneOf') {
+        onUpdateFilter(existingCategoryCondition, {
+          ...existingCategoryCondition,
+          value: allCategoryIds.filter(id => !newCategoryIdSet.has(id)),
+        });
+        return;
+      }
+
+      // Otherwise use `oneOf` condition
+      onUpdateFilter(existingCategoryCondition, newCondition);
+      return;
+    }
+
+    // Don't add a new filter if all categories are selected (default state)
+    if (allCategoriesSelected) {
+      return;
+    }
+
+    // If the existing conditions does not have a "category" - append a new one
+    onApplyFilter(newCondition);
+  };
+
+  const selectedCategories = useSelectedCategories(conditions, categories.list);
   const [startDate, setStartDate] = useState(loadReport.startDate);
   const [endDate, setEndDate] = useState(loadReport.endDate);
   const [mode, setMode] = useState(loadReport.mode);
@@ -113,6 +216,9 @@ export function CustomReport() {
   const [balanceType, setBalanceType] = useState(loadReport.balanceType);
   const [showEmpty, setShowEmpty] = useState(loadReport.showEmpty);
   const [showOffBudget, setShowOffBudget] = useState(loadReport.showOffBudget);
+  const [includeCurrentInterval, setIncludeCurrentInterval] = useState(
+    loadReport.includeCurrentInterval,
+  );
   const [showHiddenCategories, setShowHiddenCategories] = useState(
     loadReport.showHiddenCategories,
   );
@@ -124,8 +230,10 @@ export function CustomReport() {
   const [dateRange, setDateRange] = useState(loadReport.dateRange);
   const [dataCheck, setDataCheck] = useState(false);
   const dateRangeLine =
-    ReportOptions.dateRange.filter(f => f[interval as keyof dateRangeProps])
-      .length - 3;
+    interval === 'Daily'
+      ? 0
+      : ReportOptions.dateRange.filter(f => f[interval as keyof dateRangeProps])
+          .length - 3;
 
   const [intervals, setIntervals] = useState(
     monthUtils.rangeInclusive(startDate, endDate),
@@ -136,15 +244,9 @@ export function CustomReport() {
     location.state
       ? location.state.report
         ? 'saved'
-        : loadReport.savedStatus ?? 'new'
-      : loadReport.savedStatus ?? 'new',
+        : (loadReport.savedStatus ?? 'new')
+      : (loadReport.savedStatus ?? 'new'),
   );
-
-  useEffect(() => {
-    if (selectedCategories === undefined && categories.list.length !== 0) {
-      setSelectedCategories(categories.list);
-    }
-  }, [categories, selectedCategories]);
 
   useEffect(() => {
     async function run() {
@@ -210,6 +312,7 @@ export function CustomReport() {
         const [dateStart, dateEnd] = getLiveRange(
           dateRange,
           trans ? trans.date : monthUtils.currentDay(),
+          includeCurrentInterval,
           firstDayOfWeekIdx,
         );
         setStartDate(dateStart);
@@ -224,6 +327,7 @@ export function CustomReport() {
     isDateStatic,
     onApplyFilter,
     report.conditions,
+    includeCurrentInterval,
   ]);
 
   useEffect(() => {
@@ -241,10 +345,16 @@ export function CustomReport() {
     }
   }, [interval, startDate, endDate, firstDayOfWeekIdx]);
 
-  const balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals' =
+  const balanceTypeOp: balanceTypeOpType =
     ReportOptions.balanceTypeMap.get(balanceType) || 'totalDebts';
   const payees = usePayees();
   const accounts = useAccounts();
+
+  const hasWarning = calculateHasWarning(conditions, {
+    categories: categories.list,
+    payees,
+    accounts,
+  });
 
   const getGroupData = useMemo(() => {
     return createGroupedSpreadsheet({
@@ -252,8 +362,7 @@ export function CustomReport() {
       endDate,
       interval,
       categories,
-      selectedCategories,
-      conditions: filters,
+      conditions,
       conditionsOp,
       showEmpty,
       showOffBudget,
@@ -268,8 +377,7 @@ export function CustomReport() {
     interval,
     balanceTypeOp,
     categories,
-    selectedCategories,
-    filters,
+    conditions,
     conditionsOp,
     showEmpty,
     showOffBudget,
@@ -279,14 +387,14 @@ export function CustomReport() {
   ]);
 
   const getGraphData = useMemo(() => {
+    // TODO: fix me - state mutations should not happen inside `useMemo`
     setDataCheck(false);
     return createCustomSpreadsheet({
       startDate,
       endDate,
       interval,
       categories,
-      selectedCategories,
-      conditions: filters,
+      conditions,
       conditionsOp,
       showEmpty,
       showOffBudget,
@@ -307,10 +415,9 @@ export function CustomReport() {
     groupBy,
     balanceTypeOp,
     categories,
-    selectedCategories,
     payees,
     accounts,
-    filters,
+    conditions,
     conditionsOp,
     showEmpty,
     showOffBudget,
@@ -338,15 +445,25 @@ export function CustomReport() {
     showEmpty,
     showOffBudget,
     showHiddenCategories,
+    includeCurrentInterval,
     showUncategorized,
-    selectedCategories,
     graphType,
-    conditions: filters,
+    conditions,
     conditionsOp,
   };
 
   const navigate = useNavigate();
   const [, setScrollWidth] = useState(0);
+
+  useEffect(() => {
+    if (disabledLegendLabel(mode, graphType, 'disableLegend')) {
+      setViewLegendPref(false);
+    }
+
+    if (disabledLegendLabel(mode, graphType, 'disableLabel')) {
+      setViewLabelsPref(false);
+    }
+  }, [setViewLegendPref, setViewLabelsPref, mode, graphType]);
 
   if (!allIntervals || !data) {
     return null;
@@ -410,15 +527,9 @@ export function CustomReport() {
   const isItemDisabled = (type: string) => {
     switch (type) {
       case 'ShowLegend': {
-        if (disabledLegendLabel(mode, graphType, 'disableLegend')) {
-          setViewLegendPref(false);
-        }
         return disabledLegendLabel(mode, graphType, 'disableLegend') || false;
       }
       case 'ShowLabels': {
-        if (disabledLegendLabel(mode, graphType, 'disableLabel')) {
-          setViewLabelsPref(false);
-        }
         return disabledLegendLabel(mode, graphType, 'disableLabel') || false;
       }
       default:
@@ -462,13 +573,6 @@ export function CustomReport() {
   };
 
   const setReportData = (input: CustomReportEntity) => {
-    const selectAll: CategoryEntity[] = [];
-    categories.grouped.map(categoryGroup =>
-      (categoryGroup.categories || []).map(category =>
-        selectAll.push(category),
-      ),
-    );
-
     setStartDate(input.startDate);
     setEndDate(input.endDate);
     setIsDateStatic(input.isDateStatic);
@@ -480,12 +584,12 @@ export function CustomReport() {
     setShowEmpty(input.showEmpty);
     setShowOffBudget(input.showOffBudget);
     setShowHiddenCategories(input.showHiddenCategories);
+    setIncludeCurrentInterval(input.includeCurrentInterval);
     setShowUncategorized(input.showUncategorized);
-    setSelectedCategories(input.selectedCategories || selectAll);
     setGraphType(input.graphType);
     onApplyFilter(null);
     (input.conditions || []).forEach(condition => onApplyFilter(condition));
-    onCondOpChange(input.conditionsOp);
+    onConditionsOpChange(input.conditionsOp);
   };
 
   const onReportChange = ({
@@ -541,7 +645,7 @@ export function CustomReport() {
         isNarrowWidth ? (
           <MobilePageHeader
             title={`Custom Report: ${report.name || 'Unsaved report'}`}
-            leftContent={<MobileBackButton onClick={onBackClick} />}
+            leftContent={<MobileBackButton onPress={onBackClick} />}
           />
         ) : (
           <PageHeader
@@ -568,6 +672,7 @@ export function CustomReport() {
         {!isNarrowWidth && (
           <ReportSidebar
             customReportItems={customReportItems}
+            selectedCategories={selectedCategories}
             categories={categories}
             dateRangeLine={dateRangeLine}
             allIntervals={allIntervals}
@@ -581,6 +686,7 @@ export function CustomReport() {
             setShowEmpty={setShowEmpty}
             setShowOffBudget={setShowOffBudget}
             setShowHiddenCategories={setShowHiddenCategories}
+            setIncludeCurrentInterval={setIncludeCurrentInterval}
             setShowUncategorized={setShowUncategorized}
             setSelectedCategories={setSelectedCategories}
             onChangeDates={onChangeDates}
@@ -590,6 +696,7 @@ export function CustomReport() {
             defaultModeItems={defaultModeItems}
             earliestTransaction={earliestTransaction}
             firstDayOfWeekIdx={firstDayOfWeekIdx}
+            isComplexCategoryCondition={isComplexCategoryCondition}
           />
         )}
         <View
@@ -613,41 +720,57 @@ export function CustomReport() {
               defaultItems={defaultItems}
             />
           )}
-          {filters && filters.length > 0 && (
+          {conditions && conditions.length > 0 && (
             <View
               style={{
                 marginBottom: 10,
                 marginLeft: 5,
-                flexShrink: 0,
-                flexDirection: 'row',
+                marginRight: 5,
+                gap: 10,
                 alignItems: 'flex-start',
-                justifyContent: 'flex-start',
+                flexShrink: 0,
               }}
             >
-              <AppliedFilters
-                filters={filters}
-                onUpdate={(oldFilter, newFilter) => {
-                  setSessionReport(
-                    'conditions',
-                    filters.map(f => (f === oldFilter ? newFilter : f)),
-                  );
-                  onReportChange({ type: 'modify' });
-                  onUpdateFilter(oldFilter, newFilter);
+              <View
+                style={{
+                  flexShrink: 0,
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
                 }}
-                onDelete={deletedFilter => {
-                  setSessionReport(
-                    'conditions',
-                    filters.filter(f => f !== deletedFilter),
-                  );
-                  onDeleteFilter(deletedFilter);
-                  onReportChange({ type: 'modify' });
-                }}
-                conditionsOp={conditionsOp}
-                onCondOpChange={co => {
-                  onCondOpChange(co);
-                  onReportChange({ type: 'modify' });
-                }}
-              />
+              >
+                <AppliedFilters
+                  conditions={conditions}
+                  onUpdate={(oldFilter, newFilter) => {
+                    setSessionReport(
+                      'conditions',
+                      conditions.map(f => (f === oldFilter ? newFilter : f)),
+                    );
+                    onReportChange({ type: 'modify' });
+                    onUpdateFilter(oldFilter, newFilter);
+                  }}
+                  onDelete={deletedFilter => {
+                    setSessionReport(
+                      'conditions',
+                      conditions.filter(f => f !== deletedFilter),
+                    );
+                    onDeleteFilter(deletedFilter);
+                    onReportChange({ type: 'modify' });
+                  }}
+                  conditionsOp={conditionsOp}
+                  onConditionsOpChange={co => {
+                    onConditionsOpChange(co);
+                    onReportChange({ type: 'modify' });
+                  }}
+                />
+              </View>
+
+              {hasWarning && (
+                <Warning style={{ paddingTop: 5, paddingBottom: 5 }}>
+                  This report is configured to use a non-existing filter value
+                  (i.e. category/account/payee).
+                </Warning>
+              )}
             </View>
           )}
           <View
@@ -681,8 +804,8 @@ export function CustomReport() {
                       left={<Block>{balanceType}:</Block>}
                       right={
                         <Text>
-                          <PrivacyFilter blurIntensity={5}>
-                            {amountToCurrency(Math.abs(data[balanceTypeOp]))}
+                          <PrivacyFilter>
+                            {amountToCurrency(data[balanceTypeOp])}
                           </PrivacyFilter>
                         </Text>
                       }
@@ -694,7 +817,7 @@ export function CustomReport() {
                 {dataCheck ? (
                   <ChooseGraph
                     data={data}
-                    filters={filters}
+                    filters={conditions}
                     mode={mode}
                     graphType={graphType}
                     balanceType={balanceType}

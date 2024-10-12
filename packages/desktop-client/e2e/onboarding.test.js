@@ -59,7 +59,7 @@ test.describe('Onboarding', () => {
     await expect(budgetPage.budgetTable).toBeVisible({ timeout: 30000 });
 
     const accountPage = await navigation.goToAccountPage('Checking');
-    await expect(accountPage.accountBalance).toHaveText('600.00');
+    await expect(accountPage.accountBalance).toHaveText('2,600.00');
 
     await navigation.goToAccountPage('Saving');
     await expect(accountPage.accountBalance).toHaveText('250.00');
@@ -93,7 +93,9 @@ test.describe('Onboarding', () => {
 
   test('navigates back to start page by clicking on “no server” in an empty budget file', async () => {
     await configurationPage.clickOnNoServer();
-    await configurationPage.startFresh();
+    const accountPage = await configurationPage.startFresh();
+
+    await expect(accountPage.transactionTable).toBeVisible();
 
     await navigation.clickOnNoServer();
     await page.getByRole('button', { name: 'Start using a server' }).click();

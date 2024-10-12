@@ -55,8 +55,17 @@ export function unlinkAccount(id: string) {
   };
 }
 
-export function linkAccount(requisitionId, account, upgradingId, offBudget) {
+export function linkAccount(
+  requisitionId: string,
+  account: unknown,
+  upgradingId?: string,
+  offBudget?: boolean,
+) {
   return async (dispatch: Dispatch) => {
+    if (upgradingId) {
+      await dispatch(setAccountsSyncing([upgradingId]));
+    }
+
     await send('gocardless-accounts-link', {
       requisitionId,
       account,
@@ -68,8 +77,16 @@ export function linkAccount(requisitionId, account, upgradingId, offBudget) {
   };
 }
 
-export function linkAccountSimpleFin(externalAccount, upgradingId, offBudget) {
+export function linkAccountSimpleFin(
+  externalAccount: unknown,
+  upgradingId?: string,
+  offBudget?: boolean,
+) {
   return async (dispatch: Dispatch) => {
+    if (upgradingId) {
+      await dispatch(setAccountsSyncing([upgradingId]));
+    }
+
     await send('simplefin-accounts-link', {
       externalAccount,
       upgradingId,
@@ -94,6 +111,11 @@ export function syncAccounts(id?: string) {
       : getState()
           .queries.accounts.filter(
             ({ bank, closed, tombstone }) => !!bank && !closed && !tombstone,
+          )
+          .sort((a, b) =>
+            a.offbudget === b.offbudget
+              ? a.sort_order - b.sort_order
+              : a.offbudget - b.offbudget,
           )
           .map(({ id }) => id);
 
@@ -185,6 +207,27 @@ export function parseTransactions(filepath, options) {
   };
 }
 
+export function importPreviewTransactions(id: string, transactions) {
+  return async (dispatch: Dispatch): Promise<boolean> => {
+    const { errors = [], updatedPreview } = await send('transactions-import', {
+      accountId: id,
+      transactions,
+      isPreview: true,
+    });
+
+    errors.forEach(error => {
+      dispatch(
+        addNotification({
+          type: 'error',
+          message: error.message,
+        }),
+      );
+    });
+
+    return updatedPreview;
+  };
+}
+
 export function importTransactions(id: string, transactions, reconcile = true) {
   return async (dispatch: Dispatch): Promise<boolean> => {
     if (!reconcile) {
@@ -203,6 +246,7 @@ export function importTransactions(id: string, transactions, reconcile = true) {
     } = await send('transactions-import', {
       accountId: id,
       transactions,
+      isPreview: false,
     });
 
     errors.forEach(error => {
@@ -243,5 +287,6 @@ export function moveAccount(id, targetId) {
   return async (dispatch: Dispatch) => {
     await send('account-move', { id, targetId });
     dispatch(getAccounts());
+    dispatch(getPayees());
   };
 }

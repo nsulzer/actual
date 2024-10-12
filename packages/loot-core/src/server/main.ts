@@ -1,5 +1,8 @@
 // @ts-strict-ignore
 import './polyfills';
+import https from 'https';
+import tls from 'tls';
+
 import * as injectAPI from '@actual-app/api/injected';
 import * as CRDT from '@actual-app/crdt';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,6 +16,7 @@ import { logger } from '../platform/server/log';
 import * as sqlite from '../platform/server/sqlite';
 import { isNonProductionEnvironment } from '../shared/environment';
 import * as monthUtils from '../shared/months';
+import { dayFromDate } from '../shared/months';
 import { q, Query } from '../shared/query';
 import { amountToInteger, stringToInteger } from '../shared/util';
 import { type Budget } from '../types/budget';
@@ -37,6 +41,7 @@ import {
 import { app as budgetApp } from './budget/app';
 import * as budget from './budget/base';
 import * as cloudStorage from './cloud-storage';
+import { app as dashboardApp } from './dashboard/app';
 import * as db from './db';
 import * as mappings from './db/mappings';
 import * as encryption from './encryption';
@@ -48,6 +53,7 @@ import { mutator, runHandler } from './mutators';
 import { app as notesApp } from './notes/app';
 import * as Platform from './platform';
 import { get, post } from './post';
+import { app as preferencesApp } from './preferences/app';
 import * as prefs from './prefs';
 import { app as reportsApp } from './reports/app';
 import { app as rulesApp } from './rules/app';
@@ -112,8 +118,7 @@ handlers['transactions-batch-update'] = mutator(async function ({
       learnCategories,
     });
 
-    // Return all data updates to the frontend
-    return result.updated;
+    return result;
   });
 });
 
@@ -171,7 +176,7 @@ handlers['get-budget-bounds'] = async function () {
   return budget.createAllBudgets();
 };
 
-handlers['rollover-budget-month'] = async function ({ month }) {
+handlers['envelope-budget-month'] = async function ({ month }) {
   const groups = await db.getCategoriesGrouped();
   const sheetName = monthUtils.sheetForMonth(month);
 
@@ -213,6 +218,8 @@ handlers['rollover-budget-month'] = async function ({ month }) {
           value(`sum-amount-${cat.id}`),
           value(`leftover-${cat.id}`),
           value(`carryover-${cat.id}`),
+          value(`goal-${cat.id}`),
+          value(`long-goal-${cat.id}`),
         ]);
       }
     }
@@ -221,7 +228,7 @@ handlers['rollover-budget-month'] = async function ({ month }) {
   return values;
 };
 
-handlers['report-budget-month'] = async function ({ month }) {
+handlers['tracking-budget-month'] = async function ({ month }) {
   const groups = await db.getCategoriesGrouped();
   const sheetName = monthUtils.sheetForMonth(month);
 
@@ -252,6 +259,8 @@ handlers['report-budget-month'] = async function ({ month }) {
         value(`budget-${cat.id}`),
         value(`sum-amount-${cat.id}`),
         value(`leftover-${cat.id}`),
+        value(`goal-${cat.id}`),
+        value(`long-goal-${cat.id}`),
       ]);
 
       if (!group.is_income) {
@@ -261,20 +270,6 @@ handlers['report-budget-month'] = async function ({ month }) {
   }
 
   return values;
-};
-
-handlers['budget-set-type'] = async function ({ type }) {
-  if (!prefs.BUDGET_TYPES.includes(type)) {
-    throw new Error('Invalid budget type: ' + type);
-  }
-
-  // It's already the same; don't do anything
-  if (type === prefs.getPrefs().budgetType) {
-    return;
-  }
-
-  // Save prefs
-  return prefs.savePrefs({ budgetType: type });
 };
 
 handlers['category-create'] = mutator(async function ({
@@ -289,7 +284,7 @@ handlers['category-create'] = mutator(async function ({
     }
 
     return db.insertCategory({
-      name,
+      name: name.trim(),
       cat_group: groupId,
       is_income: isIncome ? 1 : 0,
       hidden: hidden ? 1 : 0,
@@ -300,7 +295,10 @@ handlers['category-create'] = mutator(async function ({
 handlers['category-update'] = mutator(async function (category) {
   return withUndo(async () => {
     try {
-      await db.updateCategory(category);
+      await db.updateCategory({
+        ...category,
+        name: category.name.trim(),
+      });
     } catch (e) {
       if (e.message.toLowerCase().includes('unique constraint')) {
         return { error: { type: 'category-exists' } };
@@ -446,6 +444,10 @@ handlers['payee-create'] = mutator(async function ({ name }) {
   });
 });
 
+handlers['common-payees-get'] = async function () {
+  return db.getCommonPayees();
+};
+
 handlers['payees-get'] = async function () {
   return db.getPayees();
 };
@@ -579,6 +581,14 @@ handlers['accounts-get'] = async function () {
   return db.getAccounts();
 };
 
+handlers['account-balance'] = async function ({ id, cutoff }) {
+  const { balance } = await db.first(
+    'SELECT sum(amount) as balance FROM transactions WHERE acct = ? AND isParent = 0 AND tombstone = 0 AND date <= ?',
+    [id, db.toDateRepr(dayFromDate(cutoff))],
+  );
+  return balance ? balance : 0;
+};
+
 handlers['account-properties'] = async function ({ id }) {
   const { balance } = await db.first(
     'SELECT sum(amount) as balance FROM transactions WHERE acct = ? AND isParent = 0 AND tombstone = 0',
@@ -659,7 +669,7 @@ handlers['simplefin-accounts-link'] = async function ({
 
   const bank = await link.findOrCreateBank(
     institution,
-    externalAccount.orgDomain,
+    externalAccount.orgDomain ?? externalAccount.orgId,
   );
 
   if (upgradingId) {
@@ -982,13 +992,18 @@ handlers['simplefin-accounts'] = async function () {
     return { error: 'unauthorized' };
   }
 
-  return post(
-    getServer().SIMPLEFIN_SERVER + '/accounts',
-    {},
-    {
-      'X-ACTUAL-TOKEN': userToken,
-    },
-  );
+  try {
+    return await post(
+      getServer().SIMPLEFIN_SERVER + '/accounts',
+      {},
+      {
+        'X-ACTUAL-TOKEN': userToken,
+      },
+      60000,
+    );
+  } catch (error) {
+    return { error_code: 'TIMED_OUT' };
+  }
 };
 
 handlers['gocardless-get-banks'] = async function (country) {
@@ -1049,7 +1064,8 @@ handlers['accounts-bank-sync'] = async function ({ id }) {
   const accounts = await db.runQuery(
     `SELECT a.*, b.bank_id as bankId FROM accounts a
          LEFT JOIN banks b ON a.bank = b.id
-         WHERE a.tombstone = 0 AND a.closed = 0 ${id ? 'AND a.id = ?' : ''}`,
+         WHERE a.tombstone = 0 AND a.closed = 0 ${id ? 'AND a.id = ?' : ''}
+         ORDER BY a.offbudget, a.sort_order`,
     id ? [id] : [],
     true,
   );
@@ -1071,7 +1087,6 @@ handlers['accounts-bank-sync'] = async function ({ id }) {
           acct.account_id,
           acct.bankId,
         );
-        console.groupEnd();
 
         const { added, updated } = res;
 
@@ -1093,7 +1108,9 @@ handlers['accounts-bank-sync'] = async function ({ id }) {
         } else if (err instanceof PostError && err.reason !== 'internal') {
           errors.push({
             accountId: acct.id,
-            message: `Account “${acct.name}” is not linked properly. Please link it again`,
+            message: err.reason
+              ? err.reason
+              : `Account “${acct.name}” is not linked properly. Please link it again.`,
           });
         } else {
           errors.push({
@@ -1102,11 +1119,12 @@ handlers['accounts-bank-sync'] = async function ({ id }) {
               'There was an internal error. Please get in touch https://actualbudget.org/contact for support.',
             internal: err.stack,
           });
-
-          err.message = 'Failed syncing account: ' + err.message;
-
-          captureException(err);
         }
+
+        err.message = 'Failed syncing account “' + acct.name + '.”';
+        captureException(err);
+      } finally {
+        console.groupEnd();
       }
     }
   }
@@ -1124,6 +1142,7 @@ handlers['accounts-bank-sync'] = async function ({ id }) {
 handlers['transactions-import'] = mutator(function ({
   accountId,
   transactions,
+  isPreview,
 }) {
   return withUndo(async () => {
     if (typeof accountId !== 'string') {
@@ -1131,10 +1150,21 @@ handlers['transactions-import'] = mutator(function ({
     }
 
     try {
-      return await bankSync.reconcileTransactions(accountId, transactions);
+      return await bankSync.reconcileTransactions(
+        accountId,
+        transactions,
+        false,
+        true,
+        isPreview,
+      );
     } catch (err) {
       if (err instanceof TransactionError) {
-        return { errors: [{ message: err.message }], added: [], updated: [] };
+        return {
+          errors: [{ message: err.message }],
+          added: [],
+          updated: [],
+          updatedPreview: [],
+        };
       }
 
       throw err;
@@ -1209,13 +1239,6 @@ handlers['save-global-prefs'] = async function (prefs) {
   if ('maxMonths' in prefs) {
     await asyncStorage.setItem('max-months', '' + prefs.maxMonths);
   }
-  if ('autoUpdate' in prefs) {
-    await asyncStorage.setItem('auto-update', '' + prefs.autoUpdate);
-    process.parentPort.postMessage({
-      type: 'shouldAutoUpdate',
-      flag: prefs.autoUpdate,
-    });
-  }
   if ('documentDir' in prefs) {
     if (await fs.exists(prefs.documentDir)) {
       await asyncStorage.setItem('document-dir', prefs.documentDir);
@@ -1227,6 +1250,18 @@ handlers['save-global-prefs'] = async function (prefs) {
   if ('theme' in prefs) {
     await asyncStorage.setItem('theme', prefs.theme);
   }
+  if ('preferredDarkTheme' in prefs) {
+    await asyncStorage.setItem(
+      'preferred-dark-theme',
+      prefs.preferredDarkTheme,
+    );
+  }
+  if ('serverSelfSignedCert' in prefs) {
+    await asyncStorage.setItem(
+      'server-self-signed-cert',
+      prefs.serverSelfSignedCert,
+    );
+  }
   return 'ok';
 };
 
@@ -1234,22 +1269,23 @@ handlers['load-global-prefs'] = async function () {
   const [
     [, floatingSidebar],
     [, maxMonths],
-    [, autoUpdate],
     [, documentDir],
     [, encryptKey],
     [, theme],
+    [, preferredDarkTheme],
+    [, serverSelfSignedCert],
   ] = await asyncStorage.multiGet([
     'floating-sidebar',
     'max-months',
-    'auto-update',
     'document-dir',
     'encrypt-key',
     'theme',
+    'preferred-dark-theme',
+    'server-self-signed-cert',
   ]);
   return {
     floatingSidebar: floatingSidebar === 'true' ? true : false,
     maxMonths: stringToInteger(maxMonths || ''),
-    autoUpdate: autoUpdate == null || autoUpdate === 'true' ? true : false,
     documentDir: documentDir || getDefaultDocumentDir(),
     keyId: encryptKey && JSON.parse(encryptKey).id,
     theme:
@@ -1260,6 +1296,11 @@ handlers['load-global-prefs'] = async function () {
       theme === 'midnight'
         ? theme
         : 'auto',
+    preferredDarkTheme:
+      preferredDarkTheme === 'dark' || preferredDarkTheme === 'midnight'
+        ? preferredDarkTheme
+        : 'dark',
+    serverSelfSignedCert: serverSelfSignedCert || undefined,
   };
 };
 
@@ -1946,7 +1987,11 @@ async function loadBudget(id) {
   }
 
   // This is a bit leaky, but we need to set the initial budget type
-  sheet.get().meta().budgetType = prefs.getPrefs().budgetType;
+  const { value: budgetType = 'rollover' } =
+    (await db.first('SELECT value from preferences WHERE id = ?', [
+      'budgetType',
+    ])) ?? {};
+  sheet.get().meta().budgetType = budgetType;
   await budget.createAllBudgets();
 
   // Load all the in-memory state
@@ -2033,7 +2078,9 @@ app.handlers = handlers;
 app.combine(
   schedulesApp,
   budgetApp,
+  dashboardApp,
   notesApp,
+  preferencesApp,
   toolsApp,
   filtersApp,
   reportsApp,
@@ -2102,6 +2149,23 @@ export async function initApp(isDev, socketName) {
     }
   }
 
+  const selfSignedCertPath = await asyncStorage.getItem(
+    'server-self-signed-cert',
+  );
+
+  if (selfSignedCertPath) {
+    try {
+      const selfSignedCert = await fs.readFile(selfSignedCertPath);
+      https.globalAgent.options.ca = [...tls.rootCertificates, selfSignedCert];
+    } catch (error) {
+      console.error(
+        'Unable to add the self signed certificate, removing its reference',
+        error,
+      );
+      await asyncStorage.removeItem('server-self-signed-cert');
+    }
+  }
+
   const url = await asyncStorage.getItem('server-url');
 
   if (!url) {
@@ -2110,14 +2174,6 @@ export async function initApp(isDev, socketName) {
   setServer(url);
 
   connection.init(socketName, app.handlers);
-
-  if (!isDev && !Platform.isMobile && !Platform.isWeb) {
-    const autoUpdate = await asyncStorage.getItem('auto-update');
-    process.parentPort.postMessage({
-      type: 'shouldAutoUpdate',
-      flag: autoUpdate == null || autoUpdate === 'true',
-    });
-  }
 
   // Allow running DB queries locally
   global.$query = aqlQuery;

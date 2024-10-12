@@ -3,14 +3,16 @@ import { type AccountEntity } from '../../types/models';
 import type * as constants from '../constants';
 
 export type QueriesState = {
-  newTransactions: unknown[];
-  matchedTransactions: unknown[];
+  newTransactions: string[];
+  matchedTransactions: string[];
   lastTransaction: unknown | null;
   updatedAccounts: string[];
   accounts: AccountEntity[];
   accountsLoaded: boolean;
   categories: Awaited<ReturnType<Handlers['get-categories']>>;
   categoriesLoaded: boolean;
+  commonPayeesLoaded: boolean;
+  commonPayees: Awaited<ReturnType<Handlers['common-payees-get']>>;
   payees: Awaited<ReturnType<Handlers['payees-get']>>;
   payeesLoaded: boolean;
   earliestTransaction: unknown | null;
@@ -18,8 +20,8 @@ export type QueriesState = {
 
 type SetNewTransactionsAction = {
   type: typeof constants.SET_NEW_TRANSACTIONS;
-  newTransactions?: unknown[];
-  matchedTransactions?: unknown[];
+  newTransactions?: string[];
+  matchedTransactions?: string[];
   updatedAccounts?: string[];
 };
 
@@ -58,6 +60,11 @@ type LoadPayeesAction = {
   payees: State['payees'];
 };
 
+type LoadCommonPayeesAction = {
+  type: typeof constants.LOAD_COMMON_PAYEES;
+  payees: State['common_payees'];
+};
+
 export type QueriesActions =
   | SetNewTransactionsAction
   | UpdateNewTransactionsAction
@@ -66,4 +73,5 @@ export type QueriesActions =
   | LoadAccountsAction
   | UpdateAccountAction
   | LoadCategoriesAction
+  | LoadCommonPayeesAction
   | LoadPayeesAction;

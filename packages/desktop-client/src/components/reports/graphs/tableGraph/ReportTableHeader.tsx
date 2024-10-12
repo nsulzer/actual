@@ -1,6 +1,10 @@
 import React, { type RefObject, type UIEventHandler } from 'react';
+import { useTranslation } from 'react-i18next';
 
-import { type IntervalEntity } from 'loot-core/src/types/models/reports';
+import {
+  type balanceTypeOpType,
+  type IntervalEntity,
+} from 'loot-core/src/types/models/reports';
 
 import { theme } from '../../../../style';
 import { type CSSProperties } from '../../../../style/types';
@@ -12,7 +16,7 @@ type ReportTableHeaderProps = {
   groupBy: string;
   interval: string;
   data: IntervalEntity[];
-  balanceTypeOp: 'totalDebts' | 'totalTotals' | 'totalAssets';
+  balanceTypeOp: balanceTypeOpType;
   headerScrollRef: RefObject<HTMLDivElement>;
   handleScroll: UIEventHandler<HTMLDivElement>;
   compact: boolean;
@@ -33,6 +37,7 @@ export function ReportTableHeader({
   compactStyle,
   mode,
 }: ReportTableHeaderProps) {
+  const { t } = useTranslation();
   return (
     <Row
       collapsed={true}
@@ -91,7 +96,7 @@ export function ReportTableHeader({
                     minWidth: compact ? 50 : 85,
                   }}
                   valueStyle={compactStyle}
-                  value="Deposits"
+                  value={t('Deposits')}
                   width="flex"
                 />
                 <Cell
@@ -99,7 +104,7 @@ export function ReportTableHeader({
                     minWidth: compact ? 50 : 85,
                   }}
                   valueStyle={compactStyle}
-                  value="Payments"
+                  value={t('Payments')}
                   width="flex"
                 />
               </>
@@ -109,7 +114,7 @@ export function ReportTableHeader({
             minWidth: compact ? 50 : 85,
           }}
           valueStyle={compactStyle}
-          value="Totals"
+          value={t('Totals')}
           width="flex"
         />
         <Cell
@@ -117,7 +122,7 @@ export function ReportTableHeader({
             minWidth: compact ? 50 : 85,
           }}
           valueStyle={compactStyle}
-          value="Average"
+          value={t('Average')}
           width="flex"
         />
       </View>

@@ -1,5 +1,6 @@
 // @ts-strict-ignore
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { css } from 'glamor';
 import {
@@ -12,30 +13,49 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
+import { amountToCurrencyNoDecimal } from 'loot-core/shared/util';
+
 import { usePrivacyMode } from '../../../hooks/usePrivacyMode';
-import { useResponsive } from '../../../ResponsiveProvider';
-import { theme } from '../../../style';
-import { type CSSProperties } from '../../../style';
+import { theme, type CSSProperties } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
 import { Container } from '../Container';
 import { numberFormatterTooltip } from '../numberFormatter';
 
 type NetWorthGraphProps = {
   style?: CSSProperties;
-  graphData;
-  compact: boolean;
+  graphData: {
+    data: Array<{
+      x: string;
+      y: number;
+      assets: string;
+      debt: string;
+      change: string;
+      networth: string;
+      date: string;
+    }>;
+    hasNegative: boolean;
+    start: string;
+    end: string;
+  };
+  compact?: boolean;
+  showTooltip?: boolean;
 };
 
 export function NetWorthGraph({
   style,
   graphData,
-  compact,
+  compact = false,
+  showTooltip = true,
 }: NetWorthGraphProps) {
+  const { t } = useTranslation();
   const privacyMode = usePrivacyMode();
-  const { isNarrowWidth } = useResponsive();
 
   const tickFormatter = tick => {
-    return privacyMode ? '...' : `${Math.round(tick).toLocaleString()}`; // Formats the tick values as strings with commas
+    const res = privacyMode
+      ? '...'
+      : `${amountToCurrencyNoDecimal(Math.round(tick))}`; // Formats the tick values as strings with commas
+
+    return res;
   };
 
   const gradientOffset = () => {
@@ -92,13 +112,19 @@ export function NetWorthGraph({
               <strong>{payload[0].payload.date}</strong>
             </div>
             <div style={{ lineHeight: 1.5 }}>
-              <AlignedText left="Assets:" right={payload[0].payload.assets} />
-              <AlignedText left="Debt:" right={payload[0].payload.debt} />
               <AlignedText
-                left="Net worth:"
+                left={t('Assets:')}
+                right={payload[0].payload.assets}
+              />
+              <AlignedText left={t('Debt:')} right={payload[0].payload.debt} />
+              <AlignedText
+                left={t('Net worth:')}
                 right={<strong>{payload[0].payload.networth}</strong>}
               />
-              <AlignedText left="Change:" right={payload[0].payload.change} />
+              <AlignedText
+                left={t('Change:')}
+                right={payload[0].payload.change}
+              />
             </div>
           </div>
         </div>
@@ -121,7 +147,12 @@ export function NetWorthGraph({
                 width={width}
                 height={height}
                 data={graphData.data}
-                margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+                margin={{
+                  top: 0,
+                  right: 0,
+                  left: compact ? 0 : computePadding(graphData.data),
+                  bottom: 0,
+                }}
               >
                 {compact ? null : (
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -140,7 +171,7 @@ export function NetWorthGraph({
                   tick={{ fill: theme.pageText }}
                   tickLine={{ stroke: theme.pageText }}
                 />
-                {(!isNarrowWidth || !compact) && (
+                {showTooltip && (
                   <Tooltip
                     content={<CustomTooltip />}
                     formatter={numberFormatterTooltip}
@@ -179,4 +210,23 @@ export function NetWorthGraph({
       }
     </Container>
   );
+}
+
+/**
+ * Add left padding for Y-axis for when large amounts get clipped
+ * @param netWorthData
+ * @returns left padding for Net worth graph
+ */
+function computePadding(netWorthData: Array<{ y: number }>) {
+  /**
+   * Convert to string notation, get longest string length
+   */
+  const maxLength = Math.max(
+    ...netWorthData.map(({ y }) => {
+      return amountToCurrencyNoDecimal(Math.round(y)).length;
+    }),
+  );
+
+  // No additional left padding is required for upto 5 characters
+  return Math.max(0, (maxLength - 5) * 5);
 }

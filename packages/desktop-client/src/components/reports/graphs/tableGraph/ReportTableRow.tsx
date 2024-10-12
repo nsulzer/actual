@@ -5,7 +5,10 @@ import {
   amountToInteger,
   integerToCurrency,
 } from 'loot-core/src/shared/util';
-import { type GroupedEntity } from 'loot-core/types/models/reports';
+import {
+  type balanceTypeOpType,
+  type GroupedEntity,
+} from 'loot-core/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { useAccounts } from '../../../../hooks/useAccounts';
@@ -13,13 +16,14 @@ import { useCategories } from '../../../../hooks/useCategories';
 import { useNavigate } from '../../../../hooks/useNavigate';
 import { useResponsive } from '../../../../ResponsiveProvider';
 import { type CSSProperties, theme } from '../../../../style';
+import { Text } from '../../../common/Text';
 import { View } from '../../../common/View';
 import { Row, Cell } from '../../../table';
 import { showActivity } from '../showActivity';
 
 type ReportTableRowProps = {
   item: GroupedEntity;
-  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp: balanceTypeOpType;
   groupBy: string;
   mode: string;
   filters?: RuleConditionEntity[];
@@ -32,6 +36,7 @@ type ReportTableRowProps = {
   totalStyle?: CSSProperties;
   showHiddenCategories?: boolean;
   showOffBudget?: boolean;
+  interval: string;
   totalScrollRef?: RefObject<HTMLDivElement>;
   handleScroll?: UIEventHandler<HTMLDivElement>;
   height?: number;
@@ -56,6 +61,7 @@ export const ReportTableRow = memo(
     totalScrollRef,
     handleScroll,
     height,
+    interval,
   }: ReportTableRowProps) => {
     const average = amountToInteger(item[balanceTypeOp]) / intervalsCount;
     const groupByItem = groupBy === 'Interval' ? 'date' : 'name';
@@ -68,6 +74,7 @@ export const ReportTableRow = memo(
     const pointer =
       !isNarrowWidth &&
       !['Group', 'Interval'].includes(groupBy) &&
+      !compact &&
       !categories.grouped.map(g => g.id).includes(item.id)
         ? 'pointer'
         : 'inherit';
@@ -75,6 +82,7 @@ export const ReportTableRow = memo(
     const hoverUnderline =
       !isNarrowWidth &&
       !['Group', 'Interval'].includes(groupBy) &&
+      !compact &&
       !categories.grouped.map(g => g.id).includes(item.id)
         ? {
             cursor: pointer,
@@ -121,7 +129,9 @@ export const ReportTableRow = memo(
                     style={{
                       minWidth: compact ? 50 : 85,
                     }}
-                    linkStyle={hoverUnderline}
+                    unexposedContent={({ value }) => (
+                      <Text style={hoverUnderline}>{value}</Text>
+                    )}
                     valueStyle={compactStyle}
                     value={amountToCurrency(intervalItem[balanceTypeOp])}
                     title={
@@ -132,6 +142,7 @@ export const ReportTableRow = memo(
                     onClick={() =>
                       !isNarrowWidth &&
                       !['Group', 'Interval'].includes(groupBy) &&
+                      !compact &&
                       !categories.grouped.map(g => g.id).includes(item.id) &&
                       showActivity({
                         navigate,
@@ -143,8 +154,10 @@ export const ReportTableRow = memo(
                         showOffBudget,
                         type: 'time',
                         startDate: intervalItem.intervalStartDate || '',
+                        endDate: intervalItem.intervalEndDate || '',
                         field: groupBy.toLowerCase(),
                         id: item.id,
+                        interval,
                       })
                     }
                     width="flex"
@@ -166,11 +179,14 @@ export const ReportTableRow = memo(
                     style={{
                       minWidth: compact ? 50 : 85,
                     }}
-                    linkStyle={hoverUnderline}
+                    unexposedContent={({ value }) => (
+                      <Text style={hoverUnderline}>{value}</Text>
+                    )}
                     valueStyle={compactStyle}
                     onClick={() =>
                       !isNarrowWidth &&
                       !['Group', 'Interval'].includes(groupBy) &&
+                      !compact &&
                       !categories.grouped.map(g => g.id).includes(item.id) &&
                       showActivity({
                         navigate,
@@ -200,11 +216,14 @@ export const ReportTableRow = memo(
                     style={{
                       minWidth: compact ? 50 : 85,
                     }}
-                    linkStyle={hoverUnderline}
+                    unexposedContent={({ value }) => (
+                      <Text style={hoverUnderline}>{value}</Text>
+                    )}
                     valueStyle={compactStyle}
                     onClick={() =>
                       !isNarrowWidth &&
                       !['Group', 'Interval'].includes(groupBy) &&
+                      !compact &&
                       !categories.grouped.map(g => g.id).includes(item.id) &&
                       showActivity({
                         navigate,
@@ -235,11 +254,14 @@ export const ReportTableRow = memo(
               fontWeight: 600,
               minWidth: compact ? 50 : 85,
             }}
-            linkStyle={hoverUnderline}
+            unexposedContent={({ value }) => (
+              <Text style={hoverUnderline}>{value}</Text>
+            )}
             valueStyle={compactStyle}
             onClick={() =>
               !isNarrowWidth &&
               !['Group', 'Interval'].includes(groupBy) &&
+              !compact &&
               !categories.grouped.map(g => g.id).includes(item.id) &&
               showActivity({
                 navigate,

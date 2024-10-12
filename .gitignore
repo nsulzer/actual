@@ -21,6 +21,7 @@ packages/api/dist
 packages/api/@types
 packages/crdt/dist
 packages/desktop-electron/client-build
+packages/desktop-electron/build
 packages/desktop-electron/.electron-symbols
 packages/desktop-electron/dist
 packages/desktop-electron/loot-core
@@ -49,3 +50,6 @@ bundle.mobile.js.map
 
 # Local Netlify folder
 .netlify
+
+# build output
+package.tgz

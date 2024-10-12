@@ -24,6 +24,7 @@ export const defaultReport: CustomReportEntity = {
   showEmpty: false,
   showOffBudget: false,
   showHiddenCategories: false,
+  includeCurrentInterval: true,
   showUncategorized: false,
   graphType: 'BarGraph',
   conditions: [],
@@ -34,6 +35,8 @@ const balanceTypeOptions = [
   { description: 'Payment', format: 'totalDebts' as const },
   { description: 'Deposit', format: 'totalAssets' as const },
   { description: 'Net', format: 'totalTotals' as const },
+  { description: 'Net Payment', format: 'netDebts' as const },
+  { description: 'Net Deposit', format: 'netAssets' as const },
 ];
 
 const groupByOptions = [
@@ -58,7 +61,7 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'This week',
     name: 0,
-    type: 'Weeks',
+    type: 'Week',
     Daily: true,
     Weekly: true,
     Monthly: false,
@@ -67,7 +70,7 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'Last week',
     name: 1,
-    type: 'Weeks',
+    type: 'Week',
     Daily: true,
     Weekly: true,
     Monthly: false,
@@ -76,7 +79,7 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'This month',
     name: 0,
-    type: 'Months',
+    type: 'Month',
     Daily: true,
     Weekly: true,
     Monthly: true,
@@ -85,7 +88,7 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'Last month',
     name: 1,
-    type: 'Months',
+    type: 'Month',
     Daily: true,
     Weekly: true,
     Monthly: true,
@@ -93,8 +96,8 @@ const dateRangeOptions: dateRangeProps[] = [
   },
   {
     description: 'Last 3 months',
-    name: 2,
-    type: 'Months',
+    name: 3,
+    type: 'Month',
     Daily: true,
     Weekly: true,
     Monthly: true,
@@ -102,8 +105,8 @@ const dateRangeOptions: dateRangeProps[] = [
   },
   {
     description: 'Last 6 months',
-    name: 5,
-    type: 'Months',
+    name: 6,
+    type: 'Month',
     Daily: false,
     Weekly: false,
     Monthly: true,
@@ -111,8 +114,8 @@ const dateRangeOptions: dateRangeProps[] = [
   },
   {
     description: 'Last 12 months',
-    name: 11,
-    type: 'Months',
+    name: 12,
+    type: 'Month',
     Daily: false,
     Weekly: false,
     Monthly: true,
@@ -121,7 +124,8 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'Year to date',
     name: 'yearToDate',
-    Daily: true,
+    type: 'Month',
+    Daily: false,
     Weekly: true,
     Monthly: true,
     Yearly: true,
@@ -129,7 +133,8 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'Last year',
     name: 'lastYear',
-    Daily: true,
+    type: 'Month',
+    Daily: false,
     Weekly: true,
     Monthly: true,
     Yearly: true,
@@ -137,7 +142,8 @@ const dateRangeOptions: dateRangeProps[] = [
   {
     description: 'All time',
     name: 'allTime',
-    Daily: true,
+    type: 'Month',
+    Daily: false,
     Weekly: true,
     Monthly: true,
     Yearly: true,
@@ -280,7 +286,7 @@ type UncategorizedGroupEntity = Pick<
 
 const uncategorizedGroup: UncategorizedGroupEntity = {
   name: 'Uncategorized & Off Budget',
-  id: undefined,
+  id: 'uncategorized',
   hidden: false,
   categories: [uncategorizedCategory, transferCategory, offBudgetCategory],
 };

@@ -1,10 +1,11 @@
 // @ts-strict-ignore
 import React from 'react';
+import { Trans } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import { useNavigate } from '../../../hooks/useNavigate';
 import { theme } from '../../../style';
-import { Button } from '../../common/Button';
+import { Button } from '../../common/Button2';
 import { Text } from '../../common/Text';
 import { View } from '../../common/View';
 
@@ -37,8 +38,8 @@ export function Error() {
       >
         {getErrorMessage(error)}
       </Text>
-      <Button onClick={onTryAgain} style={{ marginTop: 20 }}>
-        Try again
+      <Button onPress={onTryAgain} style={{ marginTop: 20 }}>
+        <Trans>Try again</Trans>
       </Button>
     </View>
   );

@@ -17,6 +17,29 @@ const intervalOptions = [
   },
 ];
 
+const currentIntervalOptions = [
+  {
+    description: 'This week',
+    disableInclude: true,
+  },
+  {
+    description: 'This month',
+    disableInclude: true,
+  },
+  {
+    description: 'Year to date',
+    disableInclude: true,
+  },
+  {
+    description: 'Last year',
+    disableInclude: true,
+  },
+  {
+    description: 'All time',
+    disableInclude: true,
+  },
+];
+
 type graphOptions = {
   description: string;
   disabledSplit: string[];
@@ -40,7 +63,7 @@ const totalGraphOptions: graphOptions[] = [
     description: 'BarGraph',
     disabledSplit: [],
     defaultSplit: 'Category',
-    disabledType: ['Net'],
+    disabledType: [],
     defaultType: 'Payment',
   },
   {
@@ -72,7 +95,7 @@ const timeGraphOptions: graphOptions[] = [
     description: 'TableGraph',
     disabledSplit: ['Interval'],
     defaultSplit: 'Category',
-    disabledType: [],
+    disabledType: ['Net Payment', 'Net Deposit'],
     defaultType: 'Payment',
     disableLegend: true,
     disableLabel: true,
@@ -81,14 +104,14 @@ const timeGraphOptions: graphOptions[] = [
     description: 'StackedBarGraph',
     disabledSplit: ['Interval'],
     defaultSplit: 'Category',
-    disabledType: ['Net'],
+    disabledType: [],
     defaultType: 'Payment',
   },
   {
     description: 'LineGraph',
     disabledSplit: ['Interval'],
     defaultSplit: 'Category',
-    disabledType: ['Net'],
+    disabledType: [],
     defaultType: 'Payment',
     disableLegend: false,
     disableLabel: true,
@@ -170,6 +193,9 @@ export const disabledList = {
   mode: modeOptions,
   modeGraphsMap: new Map(
     modeOptions.map(item => [item.description, item.disabledGraph]),
+  ),
+  currentInterval: new Map(
+    currentIntervalOptions.map(item => [item.description, item.disableInclude]),
   ),
 };
 

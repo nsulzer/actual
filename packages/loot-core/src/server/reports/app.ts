@@ -6,19 +6,25 @@ import {
 } from '../../types/models';
 import { createApp } from '../app';
 import * as db from '../db';
+import { ValidationError } from '../errors';
 import { requiredFields } from '../models';
 import { mutator } from '../mutators';
 import { undoable } from '../undo';
 
 import { ReportsHandlers } from './types/handlers';
 
-const reportModel = {
-  validate(report: CustomReportEntity, { update }: { update?: boolean } = {}) {
+export const reportModel = {
+  validate(
+    report: Omit<CustomReportEntity, 'tombstone'>,
+    { update }: { update?: boolean } = {},
+  ) {
     requiredFields('Report', report, ['conditionsOp'], update);
 
     if (!update || 'conditionsOp' in report) {
       if (!['and', 'or'].includes(report.conditionsOp)) {
-        throw new Error('Invalid filter conditionsOp: ' + report.conditionsOp);
+        throw new ValidationError(
+          'Invalid filter conditionsOp: ' + report.conditionsOp,
+        );
       }
     }
 
@@ -41,11 +47,10 @@ const reportModel = {
       showOffBudget: row.show_offbudget === 1,
       showHiddenCategories: row.show_hidden === 1,
       showUncategorized: row.show_uncategorized === 1,
-      selectedCategories: row.selected_categories,
+      includeCurrentInterval: row.include_current === 1,
       graphType: row.graph_type,
       conditions: row.conditions,
       conditionsOp: row.conditions_op,
-      data: row.metadata,
     };
   },
 
@@ -65,11 +70,10 @@ const reportModel = {
       show_offbudget: report.showOffBudget ? 1 : 0,
       show_hidden: report.showHiddenCategories ? 1 : 0,
       show_uncategorized: report.showUncategorized ? 1 : 0,
-      selected_categories: report.selectedCategories,
+      include_current: report.includeCurrentInterval ? 1 : 0,
       graph_type: report.graphType,
       conditions: report.conditions,
       conditions_op: report.conditionsOp,
-      metadata: report.data,
     };
   },
 };
@@ -116,7 +120,7 @@ async function createReport(report: CustomReportEntity) {
 
   const nameExists = await reportNameExists(item.name, item.id ?? '', true);
   if (nameExists) {
-    throw new Error('There is already a filter named ' + item.name);
+    throw new Error('There is already a report named ' + item.name);
   }
 
   // Create the report here based on the info
@@ -136,10 +140,10 @@ async function updateReport(item: CustomReportEntity) {
 
   const nameExists = await reportNameExists(item.name, item.id, false);
   if (nameExists) {
-    throw new Error('There is already a filter named ' + item.name);
+    throw new Error('There is already a report named ' + item.name);
   }
 
-  await db.insertWithSchema('custom_reports', reportModel.fromJS(item));
+  await db.updateWithSchema('custom_reports', reportModel.fromJS(item));
 }
 
 async function deleteReport(id: string) {

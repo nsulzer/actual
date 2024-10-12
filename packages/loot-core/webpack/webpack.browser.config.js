@@ -41,6 +41,7 @@ module.exports = {
       process: require.resolve('process/browser'),
       stream: require.resolve('stream-browserify'),
       tls: false,
+      https: false,
       // used by memfs in a check which we can ignore I think
       url: false,
       zlib: require.resolve('browserify-zlib'),
@@ -73,7 +74,9 @@ module.exports = {
         // `terserOptions` options will be passed to `swc` (`@swc/core`)
         // Link to options - https://swc.rs/docs/config-js-minify
         terserOptions: {
-          compress: false,
+          compress: {
+            drop_debugger: false,
+          },
           mangle: true,
         },
       }),

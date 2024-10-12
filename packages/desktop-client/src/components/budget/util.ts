@@ -1,10 +1,15 @@
 // @ts-strict-ignore
+import { t } from 'i18next';
+
 import { type useSpreadsheet } from 'loot-core/src/client/SpreadsheetProvider';
 import { send } from 'loot-core/src/platform/client/fetch';
 import * as monthUtils from 'loot-core/src/shared/months';
 import { type Handlers } from 'loot-core/src/types/handlers';
-import { type CategoryGroupEntity } from 'loot-core/src/types/models';
-import { type LocalPrefs } from 'loot-core/src/types/prefs';
+import {
+  type CategoryEntity,
+  type CategoryGroupEntity,
+} from 'loot-core/src/types/models';
+import { type SyncedPrefs } from 'loot-core/src/types/prefs';
 
 import { type CSSProperties, styles, theme } from '../../style';
 import { type DropPosition } from '../sort';
@@ -15,21 +20,38 @@ export function addToBeBudgetedGroup(groups: CategoryGroupEntity[]) {
   return [
     {
       id: 'to-be-budgeted',
-      name: 'To Be Budgeted',
+      name: t('To Be Budgeted'),
       categories: [
         {
           id: 'to-be-budgeted',
-          name: 'To Be Budgeted',
+          name: t('To Be Budgeted'),
           cat_group: 'to-be-budgeted',
           group: {
             id: 'to-be-budgeted',
-            name: 'To Be Budgeted',
+            name: t('To Be Budgeted'),
           },
         },
       ],
     },
     ...groups,
   ];
+}
+
+export function removeCategoriesFromGroups(
+  categoryGroups: CategoryGroupEntity[],
+  ...categoryIds: CategoryEntity['id'][]
+) {
+  if (!categoryIds || categoryIds.length === 0) return categoryGroups;
+
+  const categoryIdsSet = new Set(categoryIds);
+
+  return categoryGroups
+    .map(group => ({
+      ...group,
+      categories:
+        group.categories?.filter(cat => !categoryIdsSet.has(cat.id)) ?? [],
+    }))
+    .filter(group => group.categories?.length);
 }
 
 export function separateGroups(categoryGroups: CategoryGroupEntity[]) {
@@ -103,7 +125,7 @@ export function findSortDown(
     }
 
     const newIdx = idx + 1;
-    if (newIdx < arr.length - 1) {
+    if (newIdx < arr.length) {
       return { targetId: arr[newIdx].id };
     } else {
       // Move to the end
@@ -141,12 +163,12 @@ export function getScrollbarWidth() {
 }
 
 export async function prewarmMonth(
-  budgetType: LocalPrefs['budgetType'],
+  budgetType: SyncedPrefs['budgetType'],
   spreadsheet: ReturnType<typeof useSpreadsheet>,
   month: string,
 ) {
   const method: keyof Handlers =
-    budgetType === 'report' ? 'report-budget-month' : 'rollover-budget-month';
+    budgetType === 'report' ? 'tracking-budget-month' : 'envelope-budget-month';
 
   const values = await send(method, { month });
 
@@ -156,7 +178,7 @@ export async function prewarmMonth(
 }
 
 export async function prewarmAllMonths(
-  budgetType: LocalPrefs['budgetType'],
+  budgetType: SyncedPrefs['budgetType'],
   spreadsheet: ReturnType<typeof useSpreadsheet>,
   bounds: { start: string; end: string },
   startMonth: string,
@@ -173,18 +195,4 @@ export async function prewarmAllMonths(
   await Promise.all(
     months.map(month => prewarmMonth(budgetType, spreadsheet, month)),
   );
-}
-
-export async function switchBudgetType(
-  newBudgetType: LocalPrefs['budgetType'],
-  spreadsheet: ReturnType<typeof useSpreadsheet>,
-  bounds: { start: string; end: string },
-  startMonth: string,
-  onSuccess: () => Promise<void> | undefined,
-) {
-  spreadsheet.disableObservers();
-  await send('budget-set-type', { type: newBudgetType });
-  await prewarmAllMonths(newBudgetType, spreadsheet, bounds, startMonth);
-  spreadsheet.enableObservers();
-  await onSuccess?.();
 }

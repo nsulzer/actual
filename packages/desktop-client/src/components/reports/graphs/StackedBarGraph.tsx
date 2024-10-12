@@ -1,5 +1,6 @@
 // @ts-strict-ignore
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { css } from 'glamor';
 import {
@@ -17,22 +18,24 @@ import {
   amountToCurrency,
   amountToCurrencyNoDecimal,
 } from 'loot-core/src/shared/util';
-import { type DataEntity } from 'loot-core/src/types/models/reports';
+import {
+  type balanceTypeOpType,
+  type DataEntity,
+} from 'loot-core/src/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { useAccounts } from '../../../hooks/useAccounts';
 import { useCategories } from '../../../hooks/useCategories';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { usePrivacyMode } from '../../../hooks/usePrivacyMode';
-import { useResponsive } from '../../../ResponsiveProvider';
-import { theme } from '../../../style';
-import { type CSSProperties } from '../../../style';
+import { theme, type CSSProperties } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
 import { Container } from '../Container';
 import { getCustomTick } from '../getCustomTick';
 import { numberFormatterTooltip } from '../numberFormatter';
 
 import { renderCustomLabel } from './renderCustomLabel';
+import { showActivity } from './showActivity';
 
 type PayloadItem = {
   name: string;
@@ -59,6 +62,7 @@ const CustomTooltip = ({
   payload,
   label,
 }: CustomTooltipProps) => {
+  const { t } = useTranslation();
   if (active && payload && payload.length) {
     let sumTotals = 0;
     return (
@@ -101,7 +105,7 @@ const CustomTooltip = ({
               })}
             {payload.length > 5 && compact && '...'}
             <AlignedText
-              left="Total"
+              left={t('Total')}
               right={amountToCurrency(sumTotals)}
               style={{
                 fontWeight: 600,
@@ -143,9 +147,11 @@ type StackedBarGraphProps = {
   groupBy: string;
   compact?: boolean;
   viewLabels: boolean;
-  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp: balanceTypeOpType;
   showHiddenCategories?: boolean;
   showOffBudget?: boolean;
+  showTooltip?: boolean;
+  interval?: string;
 };
 
 export function StackedBarGraph({
@@ -158,12 +164,13 @@ export function StackedBarGraph({
   balanceTypeOp,
   showHiddenCategories,
   showOffBudget,
+  showTooltip = true,
+  interval,
 }: StackedBarGraphProps) {
   const navigate = useNavigate();
   const categories = useCategories();
   const accounts = useAccounts();
   const privacyMode = usePrivacyMode();
-  const { isNarrowWidth } = useResponsive();
   const [pointer, setPointer] = useState('');
   const [tooltip, setTooltip] = useState('');
 
@@ -172,53 +179,6 @@ export function StackedBarGraph({
     .reduce((acc, cur) => (Math.abs(cur) > Math.abs(acc) ? cur : acc), 0);
 
   const leftMargin = Math.abs(largestValue) > 1000000 ? 20 : 0;
-
-  const onShowActivity = (item, id) => {
-    const amount = balanceTypeOp === 'totalDebts' ? 'lte' : 'gte';
-    const field = groupBy === 'Interval' ? null : groupBy.toLowerCase();
-    const hiddenCategories = categories.list
-      .filter(f => f.hidden)
-      .map(e => e.id);
-    const offBudgetAccounts = accounts.filter(f => f.offbudget).map(e => e.id);
-
-    const conditions = [
-      ...filters,
-      { field, op: 'is', value: id, type: 'id' },
-      {
-        field: 'date',
-        op: 'is',
-        value: item.dateStart,
-        options: { date: true },
-      },
-      balanceTypeOp !== 'totalTotals' && {
-        field: 'amount',
-        op: amount,
-        value: 0,
-        type: 'number',
-      },
-      hiddenCategories.length > 0 &&
-        !showHiddenCategories && {
-          field: 'category',
-          op: 'notOneOf',
-          value: hiddenCategories,
-          type: 'id',
-        },
-      offBudgetAccounts.length > 0 &&
-        !showOffBudget && {
-          field: 'account',
-          op: 'notOneOf',
-          value: offBudgetAccounts,
-          type: 'id',
-        },
-    ].filter(f => f);
-    navigate('/accounts', {
-      state: {
-        goBack: true,
-        conditions,
-        categoryId: item.id,
-      },
-    });
-  };
 
   return (
     <Container
@@ -236,10 +196,11 @@ export function StackedBarGraph({
                 width={width}
                 height={height}
                 data={data.intervalData}
-                margin={{ top: 0, right: 0, left: leftMargin, bottom: 0 }}
+                margin={{ top: 0, right: 0, left: leftMargin, bottom: 10 }}
                 style={{ cursor: pointer }}
+                stackOffset="sign" //stacked by sign
               >
-                {(!isNarrowWidth || !compact) && (
+                {showTooltip && (
                   <Tooltip
                     content={
                       <CustomTooltip compact={compact} tooltip={tooltip} />
@@ -295,9 +256,23 @@ export function StackedBarGraph({
                         }
                       }}
                       onClick={e =>
-                        !isNarrowWidth &&
+                        ((compact && showTooltip) || !compact) &&
                         !['Group', 'Interval'].includes(groupBy) &&
-                        onShowActivity(e, entry.id)
+                        showActivity({
+                          navigate,
+                          categories,
+                          accounts,
+                          balanceTypeOp,
+                          filters,
+                          showHiddenCategories,
+                          showOffBudget,
+                          type: 'time',
+                          startDate: e.intervalStartDate,
+                          endDate: e.intervalEndDate,
+                          field: groupBy.toLowerCase(),
+                          id: entry.id,
+                          interval,
+                        })
                       }
                     >
                       {viewLabels && !compact && (

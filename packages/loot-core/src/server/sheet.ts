@@ -1,12 +1,11 @@
 // @ts-strict-ignore
-import { type Database } from 'better-sqlite3';
+import { type Database } from '@jlongster/sql.js';
 
 import { captureBreadcrumb } from '../platform/exceptions';
 import * as sqlite from '../platform/server/sqlite';
 import { sheetForMonth } from '../shared/months';
 
 import * as Platform from './platform';
-import * as prefs from './prefs';
 import { Spreadsheet } from './spreadsheet/spreadsheet';
 import { resolveName } from './spreadsheet/util';
 
@@ -196,7 +195,10 @@ export async function loadUserBudgets(db): Promise<void> {
   // TODO: Clear out the cache here so make sure future loads of the app
   // don't load any extra values that aren't set here
 
-  const { budgetType } = prefs.getPrefs() || {};
+  const { value: budgetType = 'rollover' } =
+    (await db.first('SELECT value from preferences WHERE id = ?', [
+      'budgetType',
+    ])) ?? {};
 
   const table = budgetType === 'report' ? 'reflect_budgets' : 'zero_budgets';
   const budgets = await db.all(`
@@ -217,6 +219,7 @@ export async function loadUserBudgets(db): Promise<void> {
         budget.carryover === 1 ? true : false,
       );
       sheet.set(`${sheetName}!goal-${budget.category}`, budget.goal);
+      sheet.set(`${sheetName}!long-goal-${budget.category}`, budget.long_goal);
     }
   }
 

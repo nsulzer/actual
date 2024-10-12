@@ -17,7 +17,8 @@ import {
   RuleEntity,
   PayeeEntity,
 } from './models';
-import { GlobalPrefs, LocalPrefs } from './prefs';
+import { GlobalPrefs, MetadataPrefs } from './prefs';
+import { Query } from './query';
 import { EmptyObject } from './util';
 
 export interface ServerHandlers {
@@ -28,11 +29,8 @@ export interface ServerHandlers {
   redo: () => Promise<void>;
 
   'transactions-batch-update': (
-    arg: Omit<
-      Parameters<typeof batchUpdateTransactions>[0],
-      'detectOrphanPayees'
-    >,
-  ) => Promise<Awaited<ReturnType<typeof batchUpdateTransactions>>['updated']>;
+    ...arg: Parameters<typeof batchUpdateTransactions>
+  ) => ReturnType<typeof batchUpdateTransactions>;
 
   'transaction-add': (transaction) => Promise<EmptyObject>;
 
@@ -61,21 +59,19 @@ export interface ServerHandlers {
 
   'get-budget-bounds': () => Promise<{ start: string; end: string }>;
 
-  'rollover-budget-month': (arg: { month }) => Promise<
+  'envelope-budget-month': (arg: { month }) => Promise<
     {
       value: string | number | boolean;
       name: string;
     }[]
   >;
 
-  'report-budget-month': (arg: { month }) => Promise<
+  'tracking-budget-month': (arg: { month }) => Promise<
     {
       value: string | number | boolean;
       name: string;
     }[]
   >;
-
-  'budget-set-type': (arg: { type }) => Promise<unknown>;
 
   'category-create': (arg: {
     name;
@@ -105,11 +101,13 @@ export interface ServerHandlers {
 
   'payee-create': (arg: { name }) => Promise<string>;
 
+  'common-payees-get': () => Promise<PayeeEntity[]>;
+
   'payees-get': () => Promise<PayeeEntity[]>;
 
   'payees-get-rule-counts': () => Promise<unknown>;
 
-  'payees-merge': (arg: { targetId; mergeIds }) => Promise<unknown>;
+  'payees-merge': (arg: { targetId; mergeIds }) => Promise<void>;
 
   'payees-batch-change': (arg: {
     added?;
@@ -138,7 +136,7 @@ export interface ServerHandlers {
 
   'create-query': (arg: { sheetName; name; query }) => Promise<unknown>;
 
-  query: (query) => Promise<{ data; dependencies }>;
+  query: (query: Query) => Promise<{ data: unknown; dependencies }>;
 
   'account-update': (arg: { id; name }) => Promise<unknown>;
 
@@ -222,10 +220,15 @@ export interface ServerHandlers {
     updatedAccounts;
   }>;
 
-  'transactions-import': (arg: { accountId; transactions }) => Promise<{
+  'transactions-import': (arg: {
+    accountId;
+    transactions;
+    isPreview;
+  }) => Promise<{
     errors?: { message: string }[];
     added;
     updated;
+    updatedPreview;
   }>;
 
   'account-unlink': (arg: { id }) => Promise<'ok'>;
@@ -236,7 +239,7 @@ export interface ServerHandlers {
 
   'save-prefs': (prefsToSet) => Promise<'ok'>;
 
-  'load-prefs': () => Promise<LocalPrefs | null>;
+  'load-prefs': () => Promise<MetadataPrefs | null>;
 
   'sync-reset': () => Promise<{ error?: { reason: string; meta?: unknown } }>;
 

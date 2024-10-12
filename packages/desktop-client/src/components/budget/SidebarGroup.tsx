@@ -1,11 +1,12 @@
 // @ts-strict-ignore
 import React, { type CSSProperties, useRef, useState } from 'react';
 import { type ConnectDragSource } from 'react-dnd';
+import { useTranslation } from 'react-i18next';
 
 import { SvgExpandArrow } from '../../icons/v0';
 import { SvgCheveronDown } from '../../icons/v1';
 import { theme } from '../../style';
-import { Button } from '../common/Button';
+import { Button } from '../common/Button2';
 import { Menu } from '../common/Menu';
 import { Popover } from '../common/Popover';
 import { Text } from '../common/Text';
@@ -50,6 +51,8 @@ export function SidebarGroup({
   onHideNewGroup,
   onToggleCollapse,
 }: SidebarGroupProps) {
+  const { t } = useTranslation();
+
   const temporary = group.id === 'new';
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef(null);
@@ -94,12 +97,9 @@ export function SidebarGroup({
         <>
           <View style={{ marginLeft: 5, flexShrink: 0 }} ref={triggerRef}>
             <Button
-              type="bare"
+              variant="bare"
               className="hover-visible"
-              onClick={e => {
-                e.stopPropagation();
-                setMenuOpen(true);
-              }}
+              onPress={() => setMenuOpen(true)}
               style={{ padding: 3 }}
             >
               <SvgCheveronDown width={14} height={14} />
@@ -126,13 +126,13 @@ export function SidebarGroup({
                   setMenuOpen(false);
                 }}
                 items={[
-                  { name: 'add-category', text: 'Add category' },
+                  { name: 'add-category', text: t('Add category') },
+                  { name: 'rename', text: t('Rename') },
                   !group.is_income && {
                     name: 'toggle-visibility',
-                    text: group.hidden ? 'Show' : 'Hide',
+                    text: group.hidden ? t('Show') : t('Hide'),
                   },
-                  { name: 'rename', text: 'Rename' },
-                  onDelete && { name: 'delete', text: 'Delete' },
+                  onDelete && { name: 'delete', text: t('Delete') },
                 ]}
               />
             </Popover>
@@ -200,7 +200,7 @@ export function SidebarGroup({
         style={{ fontWeight: 600 }}
         inputProps={{
           style: { marginLeft: 20 },
-          placeholder: temporary ? 'New Group Name' : '',
+          placeholder: temporary ? t('New Group Name') : '',
         }}
       />
     </View>

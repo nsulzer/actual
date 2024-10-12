@@ -1,5 +1,6 @@
 // @ts-strict-ignore
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { css } from 'glamor';
 import {
@@ -19,16 +20,17 @@ import {
   amountToCurrency,
   amountToCurrencyNoDecimal,
 } from 'loot-core/src/shared/util';
-import { type DataEntity } from 'loot-core/src/types/models/reports';
+import {
+  type balanceTypeOpType,
+  type DataEntity,
+} from 'loot-core/src/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { useAccounts } from '../../../hooks/useAccounts';
 import { useCategories } from '../../../hooks/useCategories';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { usePrivacyMode } from '../../../hooks/usePrivacyMode';
-import { useResponsive } from '../../../ResponsiveProvider';
-import { type CSSProperties } from '../../../style';
-import { theme } from '../../../style/index';
+import { type CSSProperties, theme } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
 import { Container } from '../Container';
 import { getCustomTick } from '../getCustomTick';
@@ -36,6 +38,7 @@ import { numberFormatterTooltip } from '../numberFormatter';
 
 import { adjustTextSize } from './adjustTextSize';
 import { renderCustomLabel } from './renderCustomLabel';
+import { showActivity } from './showActivity';
 
 type PayloadChild = {
   props: {
@@ -49,6 +52,8 @@ type PayloadItem = {
     name: string;
     totalAssets: number | string;
     totalDebts: number | string;
+    netAssets: number | string;
+    netDebts: number | string;
     totalTotals: number | string;
     networth: number | string;
     totalChange: number | string;
@@ -59,7 +64,7 @@ type PayloadItem = {
 type CustomTooltipProps = {
   active?: boolean;
   payload?: PayloadItem[];
-  balanceTypeOp?: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp?: balanceTypeOpType;
   yAxis?: string;
 };
 
@@ -69,6 +74,8 @@ const CustomTooltip = ({
   balanceTypeOp,
   yAxis,
 }: CustomTooltipProps) => {
+  const { t } = useTranslation();
+
   if (active && payload && payload.length) {
     return (
       <div
@@ -89,19 +96,31 @@ const CustomTooltip = ({
           <div style={{ lineHeight: 1.5 }}>
             {['totalAssets', 'totalTotals'].includes(balanceTypeOp) && (
               <AlignedText
-                left="Assets:"
+                left={t('Assets:')}
                 right={amountToCurrency(payload[0].payload.totalAssets)}
               />
             )}
             {['totalDebts', 'totalTotals'].includes(balanceTypeOp) && (
               <AlignedText
-                left="Debt:"
+                left={t('Debts:')}
                 right={amountToCurrency(payload[0].payload.totalDebts)}
+              />
+            )}
+            {['netAssets'].includes(balanceTypeOp) && (
+              <AlignedText
+                left={t('Net Assets:')}
+                right={amountToCurrency(payload[0].payload.netAssets)}
+              />
+            )}
+            {['netDebts'].includes(balanceTypeOp) && (
+              <AlignedText
+                left={t('Net Debts:')}
+                right={amountToCurrency(payload[0].payload.netDebts)}
               />
             )}
             {['totalTotals'].includes(balanceTypeOp) && (
               <AlignedText
-                left="Net:"
+                left={t('Net:')}
                 right={
                   <strong>
                     {amountToCurrency(payload[0].payload.totalTotals)}
@@ -136,11 +155,12 @@ type BarGraphProps = {
   data: DataEntity;
   filters: RuleConditionEntity[];
   groupBy: string;
-  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp: balanceTypeOpType;
   compact?: boolean;
   viewLabels: boolean;
   showHiddenCategories?: boolean;
   showOffBudget?: boolean;
+  showTooltip?: boolean;
 };
 
 export function BarGraph({
@@ -153,12 +173,12 @@ export function BarGraph({
   viewLabels,
   showHiddenCategories,
   showOffBudget,
+  showTooltip = true,
 }: BarGraphProps) {
   const navigate = useNavigate();
   const categories = useCategories();
   const accounts = useAccounts();
   const privacyMode = usePrivacyMode();
-  const { isNarrowWidth } = useResponsive();
   const [pointer, setPointer] = useState('');
 
   const yAxis = groupBy === 'Interval' ? 'date' : 'name';
@@ -166,11 +186,15 @@ export function BarGraph({
   const labelsMargin = viewLabels ? 30 : 0;
 
   const getVal = obj => {
-    if (balanceTypeOp === 'totalDebts') {
-      return -1 * obj.totalDebts;
-    } else {
+    if (balanceTypeOp === 'totalTotals' && groupBy === 'Interval') {
       return obj.totalAssets;
     }
+
+    if (['totalDebts', 'netDebts'].includes(balanceTypeOp)) {
+      return -1 * obj[balanceTypeOp];
+    }
+
+    return obj[balanceTypeOp];
   };
 
   const longestLabelLength = data[splitData]
@@ -182,61 +206,6 @@ export function BarGraph({
     .reduce((acc, cur) => (Math.abs(cur) > Math.abs(acc) ? cur : acc), 0);
 
   const leftMargin = Math.abs(largestValue) > 1000000 ? 20 : 0;
-
-  const onShowActivity = item => {
-    const amount = balanceTypeOp === 'totalDebts' ? 'lte' : 'gte';
-    const field = groupBy === 'Interval' ? null : groupBy.toLowerCase();
-    const hiddenCategories = categories.list
-      .filter(f => f.hidden)
-      .map(e => e.id);
-    const offBudgetAccounts = accounts.filter(f => f.offbudget).map(e => e.id);
-
-    const conditions = [
-      ...filters,
-      { field, op: 'is', value: item.id, type: 'id' },
-      {
-        field: 'date',
-        op: 'gte',
-        value: data.startDate,
-        options: { date: true },
-        type: 'date',
-      },
-      {
-        field: 'date',
-        op: 'lte',
-        value: data.endDate,
-        options: { date: true },
-        type: 'date',
-      },
-      balanceTypeOp !== 'totalTotals' && {
-        field: 'amount',
-        op: amount,
-        value: 0,
-        type: 'number',
-      },
-      hiddenCategories.length > 0 &&
-        !showHiddenCategories && {
-          field: 'category',
-          op: 'notOneOf',
-          value: hiddenCategories,
-          type: 'id',
-        },
-      offBudgetAccounts.length > 0 &&
-        !showOffBudget && {
-          field: 'account',
-          op: 'notOneOf',
-          value: offBudgetAccounts,
-          type: 'id',
-        },
-    ].filter(f => f);
-    navigate('/accounts', {
-      state: {
-        goBack: true,
-        conditions,
-        categoryId: item.id,
-      },
-    });
-  };
 
   return (
     <Container
@@ -263,7 +232,7 @@ export function BarGraph({
                   bottom: 0,
                 }}
               >
-                {(!isNarrowWidth || !compact) && (
+                {showTooltip && (
                   <Tooltip
                     cursor={{ fill: 'transparent' }}
                     content={
@@ -309,10 +278,23 @@ export function BarGraph({
                     !['Group', 'Interval'].includes(groupBy) &&
                     setPointer('pointer')
                   }
-                  onClick={
-                    !isNarrowWidth &&
+                  onClick={item =>
+                    ((compact && showTooltip) || !compact) &&
                     !['Group', 'Interval'].includes(groupBy) &&
-                    onShowActivity
+                    showActivity({
+                      navigate,
+                      categories,
+                      accounts,
+                      balanceTypeOp,
+                      filters,
+                      showHiddenCategories,
+                      showOffBudget,
+                      type: 'totals',
+                      startDate: data.startDate,
+                      endDate: data.endDate,
+                      field: groupBy.toLowerCase(),
+                      id: item.id,
+                    })
                   }
                 >
                   {viewLabels && !compact && (

@@ -1,8 +1,7 @@
 // @ts-strict-ignore
 import * as monthUtils from '../../shared/months';
-import { safeNumber } from '../../shared/util';
+import { integerToCurrency, safeNumber } from '../../shared/util';
 import * as db from '../db';
-import * as prefs from '../prefs';
 import * as sheet from '../sheet';
 import { batchMessages } from '../sync';
 
@@ -28,12 +27,14 @@ function calcBufferedAmount(
 }
 
 function getBudgetTable(): string {
-  const { budgetType } = prefs.getPrefs() || {};
-  return budgetType === 'report' ? 'reflect_budgets' : 'zero_budgets';
+  return isReflectBudget() ? 'reflect_budgets' : 'zero_budgets';
 }
 
 export function isReflectBudget(): boolean {
-  const { budgetType } = prefs.getPrefs();
+  const budgetType =
+    db.firstSync(`SELECT value FROM preferences WHERE id = ?`, [
+      'budgetType',
+    ]) ?? 'rollover';
   return budgetType === 'report';
 }
 
@@ -114,7 +115,7 @@ export function setBudget({
   });
 }
 
-export function setGoal({ month, category, goal }): Promise<void> {
+export function setGoal({ month, category, goal, long_goal }): Promise<void> {
   const table = getBudgetTable();
   const existing = db.firstSync(
     `SELECT id FROM ${table} WHERE month = ? AND category = ?`,
@@ -124,6 +125,7 @@ export function setGoal({ month, category, goal }): Promise<void> {
     return db.update(table, {
       id: existing.id,
       goal,
+      long_goal,
     });
   }
   return db.insert(table, {
@@ -131,6 +133,7 @@ export function setGoal({ month, category, goal }): Promise<void> {
     month: dbMonth(month),
     category,
     goal,
+    long_goal,
   });
 }
 
@@ -258,8 +261,13 @@ export async function set3MonthAvg({
         'sum-amount-' + cat.id,
       );
 
-      const avg = Math.round((spent1 + spent2 + spent3) / 3);
-      setBudget({ category: cat.id, month, amount: -avg });
+      let avg = Math.round((spent1 + spent2 + spent3) / 3);
+
+      if (cat.is_income === 0) {
+        avg *= -1;
+      }
+
+      setBudget({ category: cat.id, month, amount: avg });
     }
   });
 }
@@ -273,6 +281,11 @@ export async function setNMonthAvg({
   N: number;
   category: string;
 }): Promise<void> {
+  const categoryFromDb = await db.first(
+    'SELECT is_income FROM v_categories WHERE id = ?',
+    [category],
+  );
+
   let prevMonth = monthUtils.prevMonth(month);
   let sumAmount = 0;
   for (let l = 0; l < N; l++) {
@@ -283,8 +296,13 @@ export async function setNMonthAvg({
     prevMonth = monthUtils.prevMonth(prevMonth);
   }
   await batchMessages(async () => {
-    const avg = Math.round(sumAmount / N);
-    setBudget({ category, month, amount: -avg });
+    let avg = Math.round(sumAmount / N);
+
+    if (categoryFromDb.is_income === 0) {
+      avg *= -1;
+    }
+
+    setBudget({ category, month, amount: avg });
   });
 }
 
@@ -353,7 +371,20 @@ export async function coverOverspending({
     });
   }
 
-  await setBudget({ category: to, month, amount: toBudgeted + amountCovered });
+  await batchMessages(async () => {
+    await setBudget({
+      category: to,
+      month,
+      amount: toBudgeted + amountCovered,
+    });
+
+    await addMovementNotes({
+      month,
+      amount: amountCovered,
+      to,
+      from,
+    });
+  });
 }
 
 export async function transferAvailable({
@@ -373,6 +404,30 @@ export async function transferAvailable({
   await setBudget({ category, month, amount: budgeted + amount });
 }
 
+export async function coverOverbudgeted({
+  month,
+  category,
+}: {
+  month: string;
+  category: string;
+}): Promise<void> {
+  const sheetName = monthUtils.sheetForMonth(month);
+  const toBudget = await getSheetValue(sheetName, 'to-budget');
+
+  const categoryBudget = await getSheetValue(sheetName, 'budget-' + category);
+
+  await batchMessages(async () => {
+    await setBudget({ category, month, amount: categoryBudget + toBudget });
+
+    await addMovementNotes({
+      month,
+      amount: -toBudget,
+      from: category,
+      to: 'overbudgeted',
+    });
+  });
+}
+
 export async function transferCategory({
   month,
   amount,
@@ -387,14 +442,23 @@ export async function transferCategory({
   const sheetName = monthUtils.sheetForMonth(month);
   const fromBudgeted = await getSheetValue(sheetName, 'budget-' + from);
 
-  await setBudget({ category: from, month, amount: fromBudgeted - amount });
+  await batchMessages(async () => {
+    await setBudget({ category: from, month, amount: fromBudgeted - amount });
 
-  // If we are simply moving it back into available cash to budget,
-  // don't do anything else
-  if (to !== 'to-be-budgeted') {
-    const toBudgeted = await getSheetValue(sheetName, 'budget-' + to);
-    await setBudget({ category: to, month, amount: toBudgeted + amount });
-  }
+    // If we are simply moving it back into available cash to budget,
+    // don't do anything else
+    if (to !== 'to-be-budgeted') {
+      const toBudgeted = await getSheetValue(sheetName, 'budget-' + to);
+      await setBudget({ category: to, month, amount: toBudgeted + amount });
+    }
+
+    await addMovementNotes({
+      month,
+      amount,
+      to,
+      from,
+    });
+  });
 }
 
 export async function setCategoryCarryover({
@@ -413,5 +477,54 @@ export async function setCategoryCarryover({
     for (const month of months) {
       setCarryover(table, category, dbMonth(month).toString(), flag);
     }
+  });
+}
+
+function addNewLine(notes?: string) {
+  return !notes ? '' : `${notes}${notes && '\n'}`;
+}
+
+async function addMovementNotes({
+  month,
+  amount,
+  to,
+  from,
+}: {
+  month: string;
+  amount: number;
+  to: 'to-be-budgeted' | 'overbudgeted' | string;
+  from: 'to-be-budgeted' | string;
+}) {
+  const displayAmount = integerToCurrency(amount);
+
+  const monthBudgetNotesId = `budget-${month}`;
+  const existingMonthBudgetNotes = addNewLine(
+    db.firstSync(`SELECT n.note FROM notes n WHERE n.id = ?`, [
+      monthBudgetNotesId,
+    ])?.note,
+  );
+
+  const displayDay = monthUtils.format(monthUtils.currentDate(), 'MMMM dd');
+  const categories = await db.getCategories(
+    [from, to].filter(c => c !== 'to-be-budgeted' && c !== 'overbudgeted'),
+  );
+
+  const fromCategoryName =
+    from === 'to-be-budgeted'
+      ? 'To Budget'
+      : categories.find(c => c.id === from)?.name;
+
+  const toCategoryName =
+    to === 'to-be-budgeted'
+      ? 'To Budget'
+      : to === 'overbudgeted'
+        ? 'Overbudgeted'
+        : categories.find(c => c.id === to)?.name;
+
+  const note = `Reassigned ${displayAmount} from ${fromCategoryName} → ${toCategoryName} on ${displayDay}`;
+
+  await db.update('notes', {
+    id: monthBudgetNotesId,
+    note: `${existingMonthBudgetNotes}- ${note}`,
   });
 }

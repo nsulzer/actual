@@ -2,18 +2,18 @@ import React, { type ReactNode, useEffect } from 'react';
 
 import { media } from 'glamor';
 
-import * as Platform from 'loot-core/src/client/platform';
+import { isElectron } from 'loot-core/shared/environment';
 import { listen } from 'loot-core/src/platform/client/fetch';
 
 import { useActions } from '../../hooks/useActions';
+import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useGlobalPref } from '../../hooks/useGlobalPref';
-import { useLatestVersion, useIsOutdated } from '../../hooks/useLatestVersion';
-import { useLocalPref } from '../../hooks/useLocalPref';
-import { useSetThemeColor } from '../../hooks/useSetThemeColor';
+import { useIsOutdated, useLatestVersion } from '../../hooks/useLatestVersion';
+import { useMetadataPref } from '../../hooks/useMetadataPref';
 import { useResponsive } from '../../ResponsiveProvider';
 import { theme } from '../../style';
 import { tokens } from '../../tokens';
-import { Button } from '../common/Button';
+import { Button } from '../common/Button2';
 import { Input } from '../common/Input';
 import { Link } from '../common/Link';
 import { Text } from '../common/Text';
@@ -23,12 +23,13 @@ import { MOBILE_NAV_HEIGHT } from '../mobile/MobileNavTabs';
 import { Page } from '../Page';
 import { useServerVersion } from '../ServerContext';
 
+import { Backups } from './Backups';
+import { BudgetTypeSettings } from './BudgetTypeSettings';
 import { EncryptionSettings } from './Encryption';
 import { ExperimentalFeatures } from './Experimental';
 import { ExportBudget } from './Export';
 import { FixSplits } from './FixSplits';
 import { FormatSettings } from './Format';
-import { GlobalSettings } from './Global';
 import { ResetCache, ResetSync } from './Reset';
 import { ThemeSettings } from './Themes';
 import { AdvancedToggle, Setting } from './UI';
@@ -92,8 +93,8 @@ function IDName({ children }: { children: ReactNode }) {
 }
 
 function AdvancedAbout() {
-  const [budgetId] = useLocalPref('id');
-  const [groupId] = useLocalPref('groupId');
+  const [budgetId] = useMetadataPref('id');
+  const [groupId] = useMetadataPref('groupId');
 
   return (
     <Setting>
@@ -122,7 +123,7 @@ function AdvancedAbout() {
 
 export function Settings() {
   const [floatingSidebar] = useGlobalPref('floatingSidebar');
-  const [budgetName] = useLocalPref('budgetName');
+  const [budgetName] = useMetadataPref('budgetName');
 
   const { loadPrefs, closeBudget } = useActions();
 
@@ -137,7 +138,6 @@ export function Settings() {
 
   const { isNarrowWidth } = useResponsive();
 
-  useSetThemeColor(theme.mobileViewTheme);
   return (
     <Page
       header="Settings"
@@ -167,19 +167,16 @@ export function Settings() {
                 style={{ color: theme.buttonNormalDisabledText }}
               />
             </FormField>
-            <Button onClick={closeBudget}>Close Budget</Button>
+            <Button onPress={closeBudget}>Close Budget</Button>
           </View>
         )}
-
         <About />
-
-        {!Platform.isBrowser && <GlobalSettings />}
-
         <ThemeSettings />
         <FormatSettings />
         <EncryptionSettings />
+        {useFeatureFlag('reportBudget') && <BudgetTypeSettings />}
+        {isElectron() && <Backups />}
         <ExportBudget />
-
         <AdvancedToggle>
           <AdvancedAbout />
           <ResetCache />

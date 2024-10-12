@@ -1,22 +1,28 @@
-import React, { type ComponentProps, useState } from 'react';
+import { type ComponentProps, Fragment, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { type AccountEntity } from 'loot-core/types/models';
 
 import { useAccount } from '../../hooks/useAccount';
+import { useAccounts } from '../../hooks/useAccounts';
 import { useNotes } from '../../hooks/useNotes';
 import { SvgClose, SvgDotsHorizontalTriple, SvgLockOpen } from '../../icons/v1';
 import { SvgNotesPaper } from '../../icons/v2';
 import { type CSSProperties, styles, theme } from '../../style';
-import { Button } from '../common/Button';
+import { Button } from '../common/Button2';
 import { Menu } from '../common/Menu';
-import { Modal, ModalTitle } from '../common/Modal';
+import {
+  Modal,
+  ModalCloseButton,
+  ModalHeader,
+  ModalTitle,
+} from '../common/Modal';
+import { Popover } from '../common/Popover';
 import { View } from '../common/View';
-import { type CommonModalProps } from '../Modals';
 import { Notes } from '../Notes';
-import { Tooltip } from '../tooltips';
+import { validateAccountName } from '../util/accountValidation';
 
 type AccountMenuModalProps = {
-  modalProps: CommonModalProps;
   accountId: string;
   onSave: (account: AccountEntity) => void;
   onCloseAccount: (accountId: string) => void;
@@ -26,7 +32,6 @@ type AccountMenuModalProps = {
 };
 
 export function AccountMenuModal({
-  modalProps,
   accountId,
   onSave,
   onCloseAccount,
@@ -34,24 +39,41 @@ export function AccountMenuModal({
   onEditNotes,
   onClose,
 }: AccountMenuModalProps) {
+  const { t } = useTranslation();
   const account = useAccount(accountId);
+  const accounts = useAccounts();
   const originalNotes = useNotes(`account-${accountId}`);
-
-  const _onClose = () => {
-    modalProps?.onClose();
-    onClose?.();
-  };
+  const [accountNameError, setAccountNameError] = useState('');
+  const [currentAccountName, setCurrentAccountName] = useState(
+    account?.name || t('New Account'),
+  );
 
   const onRename = (newName: string) => {
+    newName = newName.trim();
     if (!account) {
       return;
     }
+    if (!newName) {
+      setCurrentAccountName(t('Account'));
+    } else {
+      setCurrentAccountName(newName);
+    }
 
     if (newName !== account.name) {
-      onSave?.({
-        ...account,
-        name: newName,
-      });
+      const renameAccountError = validateAccountName(
+        newName,
+        accountId,
+        accounts,
+      );
+      if (renameAccountError) {
+        setAccountNameError(renameAccountError);
+      } else {
+        setAccountNameError('');
+        onSave?.({
+          ...account,
+          name: newName,
+        });
+      }
     }
   };
 
@@ -77,69 +99,91 @@ export function AccountMenuModal({
 
   return (
     <Modal
-      title={
-        <ModalTitle isEditable title={account.name} onTitleUpdate={onRename} />
-      }
-      showHeader
-      focusAfterClose={false}
-      {...modalProps}
-      onClose={_onClose}
-      style={{
-        height: '45vh',
+      name="account-menu"
+      onClose={onClose}
+      containerProps={{
+        style: {
+          height: '45vh',
+        },
       }}
-      leftHeaderContent={
-        <AdditionalAccountMenu
-          account={account}
-          onClose={onCloseAccount}
-          onReopen={onReopenAccount}
-        />
-      }
     >
-      <View
-        style={{
-          flex: 1,
-          flexDirection: 'column',
-        }}
-      >
-        <View
-          style={{
-            overflowY: 'auto',
-            flex: 1,
-          }}
-        >
-          <Notes
-            notes={
-              originalNotes && originalNotes.length > 0
-                ? originalNotes
-                : 'No notes'
+      {({ state: { close } }) => (
+        <>
+          <ModalHeader
+            leftContent={
+              <AdditionalAccountMenu
+                account={account}
+                onClose={onCloseAccount}
+                onReopen={onReopenAccount}
+              />
             }
-            editable={false}
-            focused={false}
-            getStyle={() => ({
-              borderRadius: 6,
-              ...((!originalNotes || originalNotes.length === 0) && {
-                justifySelf: 'center',
-                alignSelf: 'center',
-                color: theme.pageTextSubdued,
-              }),
-            })}
+            title={
+              <Fragment>
+                <ModalTitle
+                  isEditable
+                  title={currentAccountName}
+                  onTitleUpdate={onRename}
+                />
+                {accountNameError && (
+                  <View style={{ color: theme.warningText }}>
+                    {accountNameError}
+                  </View>
+                )}
+              </Fragment>
+            }
+            rightContent={<ModalCloseButton onPress={close} />}
           />
-        </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            justifyContent: 'space-between',
-            alignContent: 'space-between',
-            paddingTop: 10,
-          }}
-        >
-          <Button style={buttonStyle} onClick={_onEditNotes}>
-            <SvgNotesPaper width={20} height={20} style={{ paddingRight: 5 }} />
-            Edit notes
-          </Button>
-        </View>
-      </View>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'column',
+            }}
+          >
+            <View
+              style={{
+                overflowY: 'auto',
+                flex: 1,
+              }}
+            >
+              <Notes
+                notes={
+                  originalNotes && originalNotes.length > 0
+                    ? originalNotes
+                    : 'No notes'
+                }
+                editable={false}
+                focused={false}
+                getStyle={() => ({
+                  borderRadius: 6,
+                  ...((!originalNotes || originalNotes.length === 0) && {
+                    justifySelf: 'center',
+                    alignSelf: 'center',
+                    color: theme.pageTextSubdued,
+                  }),
+                })}
+              />
+            </View>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                alignContent: 'space-between',
+                paddingTop: 10,
+              }}
+            >
+              <Button style={buttonStyle} onPress={_onEditNotes}>
+                <SvgNotesPaper
+                  width={20}
+                  height={20}
+                  style={{ paddingRight: 5 }}
+                />
+                Edit notes
+              </Button>
+            </View>
+          </View>
+        </>
+      )}
     </Modal>
   );
 }
@@ -155,6 +199,7 @@ function AdditionalAccountMenu({
   onClose,
   onReopen,
 }: AdditionalAccountMenuProps) {
+  const triggerRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const itemStyle: CSSProperties = {
     ...styles.mediumText,
@@ -169,9 +214,10 @@ function AdditionalAccountMenu({
   return (
     <View>
       <Button
-        type="bare"
+        ref={triggerRef}
+        variant="bare"
         aria-label="Menu"
-        onClick={() => {
+        onPress={() => {
           setMenuOpen(true);
         }}
       >
@@ -180,47 +226,44 @@ function AdditionalAccountMenu({
           height={17}
           style={{ color: 'currentColor' }}
         />
-        {menuOpen && (
-          <Tooltip
-            position="bottom-left"
-            style={{ padding: 0 }}
-            onClose={() => {
+        <Popover
+          triggerRef={triggerRef}
+          isOpen={menuOpen}
+          placement="bottom start"
+          onOpenChange={() => setMenuOpen(false)}
+        >
+          <Menu
+            getItemStyle={getItemStyle}
+            items={[
+              account.closed
+                ? {
+                    name: 'reopen',
+                    text: 'Reopen account',
+                    icon: SvgLockOpen,
+                    iconSize: 15,
+                  }
+                : {
+                    name: 'close',
+                    text: 'Close account',
+                    icon: SvgClose,
+                    iconSize: 15,
+                  },
+            ]}
+            onMenuSelect={name => {
               setMenuOpen(false);
+              switch (name) {
+                case 'close':
+                  onClose?.(account.id);
+                  break;
+                case 'reopen':
+                  onReopen?.(account.id);
+                  break;
+                default:
+                  throw new Error(`Unrecognized menu option: ${name}`);
+              }
             }}
-          >
-            <Menu
-              getItemStyle={getItemStyle}
-              items={[
-                account.closed
-                  ? {
-                      name: 'reopen',
-                      text: 'Reopen account',
-                      icon: SvgLockOpen,
-                      iconSize: 15,
-                    }
-                  : {
-                      name: 'close',
-                      text: 'Close account',
-                      icon: SvgClose,
-                      iconSize: 15,
-                    },
-              ]}
-              onMenuSelect={name => {
-                setMenuOpen(false);
-                switch (name) {
-                  case 'close':
-                    onClose?.(account.id);
-                    break;
-                  case 'reopen':
-                    onReopen?.(account.id);
-                    break;
-                  default:
-                    throw new Error(`Unrecognized menu option: ${name}`);
-                }
-              }}
-            />
-          </Tooltip>
-        )}
+          />
+        </Popover>
       </Button>
     </View>
   );

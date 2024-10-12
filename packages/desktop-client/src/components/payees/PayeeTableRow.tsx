@@ -1,13 +1,21 @@
 // @ts-strict-ignore
 import { memo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { type PayeeEntity } from 'loot-core/src/types/models';
 
 import { useSelectedDispatch } from '../../hooks/useSelected';
-import { SvgArrowThinRight } from '../../icons/v1';
+import { SvgArrowThinRight, SvgBookmark } from '../../icons/v1';
 import { type CSSProperties, theme } from '../../style';
 import { Text } from '../common/Text';
-import { Cell, CellButton, InputCell, Row, SelectCell } from '../table';
+import {
+  Cell,
+  CellButton,
+  CustomCell,
+  InputCell,
+  Row,
+  SelectCell,
+} from '../table';
 
 type RuleButtonProps = {
   ruleCount: number;
@@ -17,6 +25,8 @@ type RuleButtonProps = {
 };
 
 function RuleButton({ ruleCount, focused, onEdit, onClick }: RuleButtonProps) {
+  const count = ruleCount;
+
   return (
     <Cell
       name="rule-count"
@@ -39,11 +49,9 @@ function RuleButton({ ruleCount, focused, onEdit, onClick }: RuleButtonProps) {
       >
         <Text style={{ paddingRight: 5 }}>
           {ruleCount > 0 ? (
-            <>
-              {ruleCount} associated {ruleCount === 1 ? 'rule' : 'rules'}
-            </>
+            <Trans count={ruleCount}>{{ count }} associated rules</Trans>
           ) : (
-            <>Create rule</>
+            <Trans>Create rule</Trans>
           )}
         </Text>
         <SvgArrowThinRight style={{ width: 8, height: 8 }} />
@@ -52,7 +60,7 @@ function RuleButton({ ruleCount, focused, onEdit, onClick }: RuleButtonProps) {
   );
 }
 
-type EditablePayeeFields = keyof Pick<PayeeEntity, 'name'>;
+type EditablePayeeFields = keyof Pick<PayeeEntity, 'name' | 'favorite'>;
 
 type PayeeTableRowProps = {
   payee: PayeeEntity;
@@ -63,10 +71,10 @@ type PayeeTableRowProps = {
   focusedField: string;
   onHover?: (id: PayeeEntity['id']) => void;
   onEdit: (id: PayeeEntity['id'], field: string) => void;
-  onUpdate: (
+  onUpdate: <T extends EditablePayeeFields>(
     id: PayeeEntity['id'],
-    field: EditablePayeeFields,
-    value: unknown,
+    field: T,
+    value: PayeeEntity[T],
   ) => void;
   onViewRules: (id: PayeeEntity['id']) => void;
   onCreateRule: (id: PayeeEntity['id']) => void;
@@ -88,6 +96,8 @@ export const PayeeTableRow = memo(
     onUpdate,
     style,
   }: PayeeTableRowProps) => {
+    const { t } = useTranslation();
+
     const { id } = payee;
     const dispatchSelected = useSelectedDispatch();
     const borderColor = selected
@@ -123,11 +133,30 @@ export const PayeeTableRow = memo(
           focused={focusedField === 'select'}
           selected={selected}
           onSelect={e => {
-            dispatchSelected({ type: 'select', id: payee.id, event: e });
+            dispatchSelected({
+              type: 'select',
+              id: payee.id,
+              isRangeSelect: e.shiftKey,
+            });
           }}
         />
+        <CustomCell
+          width={10}
+          exposed={!payee.transfer_acct}
+          onBlur={() => {}}
+          onUpdate={() => {}}
+          onClick={() => {}}
+        >
+          {() => {
+            if (payee.favorite) {
+              return <SvgBookmark />;
+            } else {
+              return;
+            }
+          }}
+        </CustomCell>
         <InputCell
-          value={(payee.transfer_acct ? 'Transfer: ' : '') + payee.name}
+          value={(payee.transfer_acct ? t('Transfer: ') : '') + payee.name}
           valueStyle={
             (!selected &&
               payee.transfer_acct && { color: theme.pageTextSubdued }) ||

@@ -13,6 +13,7 @@ import { pushModal } from 'loot-core/src/client/actions/modals';
 import { initiallyLoadPayees } from 'loot-core/src/client/actions/queries';
 import { send } from 'loot-core/src/platform/client/fetch';
 import * as undo from 'loot-core/src/platform/client/undo';
+import { getNormalisedString } from 'loot-core/src/shared/normalisation';
 import { mapField, friendlyOp } from 'loot-core/src/shared/rules';
 import { describeSchedule } from 'loot-core/src/shared/schedules';
 import { type NewRuleEntity } from 'loot-core/src/types/models';
@@ -20,10 +21,11 @@ import { type NewRuleEntity } from 'loot-core/src/types/models';
 import { useAccounts } from '../hooks/useAccounts';
 import { useCategories } from '../hooks/useCategories';
 import { usePayees } from '../hooks/usePayees';
+import { useSchedules } from '../hooks/useSchedules';
 import { useSelected, SelectedProvider } from '../hooks/useSelected';
 import { theme } from '../style';
 
-import { Button } from './common/Button';
+import { Button } from './common/Button2';
 import { Link } from './common/Link';
 import { Search } from './common/Search';
 import { Stack } from './common/Stack';
@@ -31,10 +33,13 @@ import { Text } from './common/Text';
 import { View } from './common/View';
 import { RulesHeader } from './rules/RulesHeader';
 import { RulesList } from './rules/RulesList';
-import { SchedulesQuery } from './rules/SchedulesQuery';
 import { SimpleTable } from './rules/SimpleTable';
 
-function mapValue(field, value, { payees, categories, accounts }) {
+function mapValue(
+  field,
+  value,
+  { payees = [], categories = [], accounts = [] },
+) {
   if (!value) return '';
 
   let object = null;
@@ -78,6 +83,11 @@ function ruleToString(rule, data) {
           data.payees.find(p => p.id === schedule._payee),
         ),
       ];
+    } else if (action.op === 'prepend-notes' || action.op === 'append-notes') {
+      return [
+        friendlyOp(action.op),
+        '“' + mapValue(action.field, action.value, data) + '”',
+      ];
     } else {
       return [];
     }
@@ -87,23 +97,23 @@ function ruleToString(rule, data) {
   );
 }
 
-type ManageRulesContentProps = {
+type ManageRulesProps = {
   isModal: boolean;
   payeeId: string | null;
   setLoading?: Dispatch<SetStateAction<boolean>>;
 };
 
-function ManageRulesContent({
+export function ManageRules({
   isModal,
   payeeId,
-  setLoading,
-}: ManageRulesContentProps) {
+  setLoading = () => {},
+}: ManageRulesProps) {
   const [allRules, setAllRules] = useState([]);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState('');
   const dispatch = useDispatch();
 
-  const { data: schedules } = SchedulesQuery.useQuery();
+  const { data: schedules = [] } = useSchedules();
   const { list: categories } = useCategories();
   const payees = usePayees();
   const accounts = useAccounts();
@@ -125,9 +135,9 @@ function ManageRulesContent({
       (filter === ''
         ? allRules
         : allRules.filter(rule =>
-            ruleToString(rule, filterData)
-              .toLowerCase()
-              .includes(filter.toLowerCase()),
+            getNormalisedString(ruleToString(rule, filterData)).includes(
+              getNormalisedString(filter),
+            ),
           )
       ).slice(0, 100 + page * 50),
     [allRules, filter, filterData, page],
@@ -313,11 +323,11 @@ function ManageRulesContent({
         >
           <Stack direction="row" align="center" justify="flex-end" spacing={2}>
             {selectedInst.items.size > 0 && (
-              <Button onClick={onDeleteSelected}>
+              <Button onPress={onDeleteSelected}>
                 Delete {selectedInst.items.size} rules
               </Button>
             )}
-            <Button type="primary" onClick={onCreateRule}>
+            <Button variant="primary" onPress={onCreateRule}>
               Create new rule
             </Button>
           </Stack>
@@ -341,27 +351,5 @@ function EmptyMessage({ text, style }) {
     >
       {text}
     </View>
-  );
-}
-
-type ManageRulesProps = {
-  isModal: boolean;
-  payeeId: string | null;
-  setLoading?: Dispatch<SetStateAction<boolean>>;
-};
-
-export function ManageRules({
-  isModal,
-  payeeId,
-  setLoading = () => {},
-}: ManageRulesProps) {
-  return (
-    <SchedulesQuery.Provider>
-      <ManageRulesContent
-        isModal={isModal}
-        payeeId={payeeId}
-        setLoading={setLoading}
-      />
-    </SchedulesQuery.Provider>
   );
 }

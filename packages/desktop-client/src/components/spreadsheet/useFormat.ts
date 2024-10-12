@@ -1,12 +1,18 @@
-import { useCallback } from 'react';
-import { useSelector } from 'react-redux';
+import { useCallback, useEffect, useMemo } from 'react';
 
-import { selectNumberFormat } from 'loot-core/src/client/selectors';
-import { integerToCurrency } from 'loot-core/src/shared/util';
+import {
+  getNumberFormat,
+  integerToCurrency,
+  isNumberFormat,
+  setNumberFormat,
+} from 'loot-core/src/shared/util';
+
+import { useSyncedPref } from '../../hooks/useSyncedPref';
 
 export type FormatType =
   | 'string'
   | 'number'
+  | 'percentage'
   | 'financial'
   | 'financial-with-sign';
 
@@ -25,6 +31,8 @@ function format(
       return val;
     case 'number':
       return '' + value;
+    case 'percentage':
+      return value + '%';
     case 'financial-with-sign':
       const formatted = format(value, 'financial', formatter);
       if (typeof value === 'number' && value >= 0) {
@@ -52,11 +60,28 @@ function format(
 }
 
 export function useFormat() {
-  const numberFormat = useSelector(selectNumberFormat);
+  const [numberFormat] = useSyncedPref('numberFormat');
+  const [hideFraction] = useSyncedPref('hideFraction');
+
+  const config = useMemo(
+    () => ({
+      format: isNumberFormat(numberFormat) ? numberFormat : 'comma-dot',
+      hideFraction: String(hideFraction) === 'true',
+    }),
+    [numberFormat, hideFraction],
+  );
+
+  // Hack: keep the global number format in sync - update the settings when
+  // the underlying configuration changes.
+  // This should be patched by moving all number-formatting utilities away from
+  // the global `getNumberFormat()` and to using the reactive `useFormat` hook.
+  useEffect(() => {
+    setNumberFormat(config);
+  }, [config]);
 
   return useCallback(
     (value: unknown, type: FormatType = 'string') =>
-      format(value, type, numberFormat.formatter),
-    [numberFormat],
+      format(value, type, getNumberFormat(config).formatter),
+    [config],
   );
 }

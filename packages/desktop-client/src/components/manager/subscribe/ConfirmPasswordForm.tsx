@@ -1,18 +1,20 @@
 // @ts-strict-ignore
-import React, { type ChangeEvent, useState } from 'react';
+import React, { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
-import { ButtonWithLoading } from '../../common/Button';
+import { ButtonWithLoading } from '../../common/Button2';
 import { BigInput } from '../../common/Input';
 import { View } from '../../common/View';
 
 export function ConfirmPasswordForm({ buttons, onSetPassword, onError }) {
+  const { t } = useTranslation();
+
   const [password1, setPassword1] = useState('');
   const [password2, setPassword2] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e) {
-    e.preventDefault();
+  async function onSubmit() {
     if (loading) {
       return;
     }
@@ -31,32 +33,27 @@ export function ConfirmPasswordForm({ buttons, onSetPassword, onError }) {
   }
 
   return (
-    <form
+    <View
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'stretch',
         marginTop: 30,
       }}
-      onSubmit={onSubmit}
     >
       <BigInput
         autoFocus={true}
-        placeholder="Password"
+        placeholder={t('Password')}
         type={showPassword ? 'text' : 'password'}
         value={password1}
-        onChange={(e: ChangeEvent<HTMLInputElement>) =>
-          setPassword1(e.target.value)
-        }
+        onChangeValue={setPassword1}
         onEnter={onSubmit}
       />
       <BigInput
-        placeholder="Confirm password"
+        placeholder={t('Confirm password')}
         type={showPassword ? 'text' : 'password'}
         value={password2}
-        onChange={(e: ChangeEvent<HTMLInputElement>) =>
-          setPassword2(e.target.value)
-        }
+        onChangeValue={setPassword2}
         style={{ marginTop: 10 }}
         onEnter={onSubmit}
       />
@@ -70,14 +67,19 @@ export function ConfirmPasswordForm({ buttons, onSetPassword, onError }) {
         }}
       >
         <label style={{ userSelect: 'none' }}>
-          <input type="checkbox" onChange={onShowPassword} /> Show password
+          <input type="checkbox" onChange={onShowPassword} />{' '}
+          <Trans>Show password</Trans>
         </label>
         <View style={{ flex: 1 }} />
         {buttons}
-        <ButtonWithLoading type="primary" loading={loading}>
-          OK
+        <ButtonWithLoading
+          variant="primary"
+          isLoading={loading}
+          onPress={onSubmit}
+        >
+          <Trans>OK</Trans>
         </ButtonWithLoading>
       </View>
-    </form>
+    </View>
   );
 }

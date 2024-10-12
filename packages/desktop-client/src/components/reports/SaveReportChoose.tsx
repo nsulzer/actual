@@ -1,7 +1,8 @@
 import React, { createRef, useEffect, useState } from 'react';
+import { Form } from 'react-aria-components';
 
 import { theme } from '../../style/theme';
-import { Button } from '../common/Button';
+import { Button } from '../common/Button2';
 import { Stack } from '../common/Stack';
 import { Text } from '../common/Text';
 import { View } from '../common/View';
@@ -24,7 +25,18 @@ export function SaveReportChoose({ onApply }: SaveReportChooseProps) {
 
   return (
     <>
-      <form>
+      <Form
+        onSubmit={e => {
+          e.preventDefault();
+
+          if (!value) {
+            setErr('Invalid report entered');
+            return;
+          }
+
+          onApply(value);
+        }}
+      >
         <View style={{ flexDirection: 'row', align: 'center' }}>
           <Text style={{ userSelect: 'none', flex: 1 }}>Choose Report</Text>
           <View style={{ flex: 1 }} />
@@ -47,22 +59,11 @@ export function SaveReportChoose({ onApply }: SaveReportChooseProps) {
           style={{ marginTop: 15 }}
         >
           <View style={{ flex: 1 }} />
-          <Button
-            type="primary"
-            onClick={e => {
-              e.preventDefault();
-              if (!value) {
-                setErr('Invalid report entered');
-                return;
-              }
-
-              onApply(value);
-            }}
-          >
+          <Button variant="primary" type="submit">
             Apply
           </Button>
         </Stack>
-      </form>
+      </Form>
       {err !== '' ? (
         <Stack direction="row" align="center" style={{ padding: 10 }}>
           <Text style={{ color: theme.errorText }}>{err}</Text>

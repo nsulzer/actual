@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { SelectedProvider, useSelected } from '../../../hooks/useSelected';
 import { SvgSearchAlternate } from '../../../icons/v2';
 import { styles, theme } from '../../../style';
 import { InputWithContent } from '../../common/InputWithContent';
 import { Label } from '../../common/Label';
 import { View } from '../../common/View';
-import { CellValue } from '../../spreadsheet/CellValue';
+import { CellValue, CellValueText } from '../../spreadsheet/CellValue';
 import { useSheetValue } from '../../spreadsheet/useSheetValue';
 import { PullToRefresh } from '../PullToRefresh';
 
@@ -56,6 +57,7 @@ function TransactionSearchInput({ placeholder, onSearch }) {
 }
 
 export function TransactionListWithBalances({
+  isLoading,
   transactions,
   balance,
   balanceCleared,
@@ -63,7 +65,7 @@ export function TransactionListWithBalances({
   searchPlaceholder = 'Search...',
   onSearch,
   onLoadMore,
-  onSelectTransaction,
+  onOpenTransaction,
   onRefresh,
 }) {
   const newTransactions = useSelector(state => state.queries.newTransactions);
@@ -72,10 +74,10 @@ export function TransactionListWithBalances({
     return newTransactions.includes(id);
   };
 
-  const unclearedAmount = useSheetValue(balanceUncleared);
+  const selectedInst = useSelected('transactions', transactions);
 
   return (
-    <>
+    <SelectedProvider instance={selectedInst}>
       <View
         style={{
           flexShrink: 0,
@@ -88,64 +90,15 @@ export function TransactionListWithBalances({
             justifyContent: 'space-evenly',
           }}
         >
-          <View
-            style={{
-              display: !unclearedAmount ? 'none' : undefined,
-              flexBasis: '33%',
-            }}
-          >
-            <Label
-              title="Cleared"
-              style={{ textAlign: 'center', fontSize: 12 }}
+          {balanceCleared && balanceUncleared ? (
+            <BalanceWithCleared
+              balance={balance}
+              balanceCleared={balanceCleared}
+              balanceUncleared={balanceUncleared}
             />
-            <CellValue
-              binding={balanceCleared}
-              type="financial"
-              style={{
-                fontSize: 12,
-                textAlign: 'center',
-                fontWeight: '500',
-              }}
-              data-testid="transactions-balance-cleared"
-            />
-          </View>
-          <View style={{ flexBasis: '33%' }}>
-            <Label title="Balance" style={{ textAlign: 'center' }} />
-            <CellValue
-              binding={balance}
-              type="financial"
-              style={{
-                fontSize: 18,
-                textAlign: 'center',
-                fontWeight: '500',
-              }}
-              getStyle={value => ({
-                color: value < 0 ? theme.errorText : theme.pillTextHighlighted,
-              })}
-              data-testid="transactions-balance"
-            />
-          </View>
-          <View
-            style={{
-              display: !unclearedAmount ? 'none' : undefined,
-              flexBasis: '33%',
-            }}
-          >
-            <Label
-              title="Uncleared"
-              style={{ textAlign: 'center', fontSize: 12 }}
-            />
-            <CellValue
-              binding={balanceUncleared}
-              type="financial"
-              style={{
-                fontSize: 12,
-                textAlign: 'center',
-                fontWeight: '500',
-              }}
-              data-testid="transactions-balance-uncleared"
-            />
-          </View>
+          ) : (
+            <Balance balance={balance} />
+          )}
         </View>
         <TransactionSearchInput
           placeholder={searchPlaceholder}
@@ -154,12 +107,91 @@ export function TransactionListWithBalances({
       </View>
       <PullToRefresh isPullable={!!onRefresh} onRefresh={onRefresh}>
         <TransactionList
+          isLoading={isLoading}
           transactions={transactions}
-          isNew={isNewTransaction}
+          isNewTransaction={isNewTransaction}
           onLoadMore={onLoadMore}
-          onSelect={onSelectTransaction}
+          onOpenTransaction={onOpenTransaction}
         />
       </PullToRefresh>
+    </SelectedProvider>
+  );
+}
+
+function BalanceWithCleared({ balanceUncleared, balanceCleared, balance }) {
+  const unclearedAmount = useSheetValue(balanceUncleared);
+
+  return (
+    <>
+      <View
+        style={{
+          display: !unclearedAmount ? 'none' : undefined,
+          flexBasis: '33%',
+        }}
+      >
+        <Label title="Cleared" style={{ textAlign: 'center', fontSize: 12 }} />
+        <CellValue binding={balanceCleared} type="financial">
+          {props => (
+            <CellValueText
+              {...props}
+              style={{
+                fontSize: 12,
+                textAlign: 'center',
+                fontWeight: '500',
+              }}
+              data-testid="transactions-balance-cleared"
+            />
+          )}
+        </CellValue>
+      </View>
+      <Balance balance={balance} />
+      <View
+        style={{
+          display: !unclearedAmount ? 'none' : undefined,
+          flexBasis: '33%',
+        }}
+      >
+        <Label
+          title="Uncleared"
+          style={{ textAlign: 'center', fontSize: 12 }}
+        />
+        <CellValue binding={balanceUncleared} type="financial">
+          {props => (
+            <CellValueText
+              {...props}
+              style={{
+                fontSize: 12,
+                textAlign: 'center',
+                fontWeight: '500',
+              }}
+              data-testid="transactions-balance-uncleared"
+            />
+          )}
+        </CellValue>
+      </View>
     </>
+  );
+}
+
+function Balance({ balance }) {
+  return (
+    <View style={{ flexBasis: '33%' }}>
+      <Label title="Balance" style={{ textAlign: 'center' }} />
+      <CellValue binding={balance} type="financial">
+        {props => (
+          <CellValueText
+            {...props}
+            style={{
+              fontSize: 18,
+              textAlign: 'center',
+              fontWeight: '500',
+              color:
+                props.value < 0 ? theme.errorText : theme.pillTextHighlighted,
+            }}
+            data-testid="transactions-balance"
+          />
+        )}
+      </CellValue>
+    </View>
   );
 }

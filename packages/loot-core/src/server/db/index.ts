@@ -7,11 +7,13 @@ import {
   makeClientId,
   Timestamp,
 } from '@actual-app/crdt';
+import { Database } from '@jlongster/sql.js';
 import LRU from 'lru-cache';
 import { v4 as uuidv4 } from 'uuid';
 
 import * as fs from '../../platform/server/fs';
 import * as sqlite from '../../platform/server/sqlite';
+import * as monthUtils from '../../shared/months';
 import { groupById } from '../../shared/util';
 import {
   CategoryEntity,
@@ -26,6 +28,7 @@ import {
   convertFromSelect,
 } from '../aql';
 import {
+  toDateRepr,
   accountModel,
   categoryModel,
   categoryGroupModel,
@@ -37,8 +40,8 @@ import { shoveSortOrders, SORT_INCREMENT } from './sort';
 
 export { toDateRepr, fromDateRepr } from '../models';
 
-let dbPath;
-let db;
+let dbPath: string | null = null;
+let db: Database | null = null;
 
 // Util
 
@@ -46,7 +49,7 @@ export function getDatabasePath() {
   return dbPath;
 }
 
-export async function openDatabase(id?) {
+export async function openDatabase(id?: string) {
   if (db) {
     await sqlite.closeDatabase(db);
   }
@@ -57,11 +60,6 @@ export async function openDatabase(id?) {
   // await execQuery('PRAGMA journal_mode = WAL');
 }
 
-export async function reopenDatabase() {
-  await sqlite.closeDatabase(db);
-  setDatabase(await sqlite.openDatabase(dbPath));
-}
-
 export async function closeDatabase() {
   if (db) {
     await sqlite.closeDatabase(db);
@@ -69,7 +67,7 @@ export async function closeDatabase() {
   }
 }
 
-export function setDatabase(db_) {
+export function setDatabase(db_: Database) {
   db = db_;
   resetQueryCache();
 }
@@ -115,14 +113,14 @@ export function runQuery(sql, params, fetchAll) {
   return result;
 }
 
-export function execQuery(sql) {
+export function execQuery(sql: string) {
   sqlite.execQuery(db, sql);
 }
 
 // This manages an LRU cache of prepared query statements. This is
 // only needed in hot spots when you are running lots of queries.
 let _queryCache = new LRU({ max: 100 });
-export function cache(sql) {
+export function cache(sql: string) {
   const cached = _queryCache.get(sql);
   if (cached) {
     return cached;
@@ -245,6 +243,13 @@ export async function delete_(table, id) {
   ]);
 }
 
+export async function deleteAll(table: string) {
+  const rows: Array<{ id: string }> = await all(`
+    SELECT id FROM ${table} WHERE tombstone = 0
+  `);
+  await Promise.all(rows.map(({ id }) => delete_(table, id)));
+}
+
 export async function selectWithSchema(table, sql, params) {
   const rows = await runQuery(sql, params, true);
   return rows
@@ -277,23 +282,36 @@ export function updateWithSchema(table, fields) {
 // Data-specific functions. Ideally this would be split up into
 // different files
 
-export async function getCategories(): Promise<CategoryEntity[]> {
-  return await all(`
-    SELECT c.* FROM categories c WHERE c.tombstone = 0
-      ORDER BY c.sort_order, c.id
-  `);
+export async function getCategories(
+  ids?: Array<CategoryEntity['id']>,
+): Promise<CategoryEntity[]> {
+  const whereIn = ids ? `c.id IN (${toSqlQueryParameters(ids)}) AND` : '';
+  const query = `SELECT c.* FROM categories c WHERE ${whereIn} c.tombstone = 0 ORDER BY c.sort_order, c.id`;
+  return ids ? await all(query, [...ids]) : await all(query);
 }
 
-export async function getCategoriesGrouped(): Promise<
-  Array<CategoryGroupEntity>
-> {
-  const groups = await all(`
-    SELECT cg.* FROM category_groups cg WHERE cg.tombstone = 0 ORDER BY cg.is_income, cg.sort_order, cg.id
-  `);
-  const categories = await all(`
-    SELECT c.* FROM categories c WHERE c.tombstone = 0
-      ORDER BY c.sort_order, c.id
-  `);
+export async function getCategoriesGrouped(
+  ids?: Array<CategoryGroupEntity['id']>,
+): Promise<Array<CategoryGroupEntity>> {
+  const categoryGroupWhereIn = ids
+    ? `cg.id IN (${toSqlQueryParameters(ids)}) AND`
+    : '';
+  const categoryGroupQuery = `SELECT cg.* FROM category_groups cg WHERE ${categoryGroupWhereIn} cg.tombstone = 0
+    ORDER BY cg.is_income, cg.sort_order, cg.id`;
+
+  const categoryWhereIn = ids
+    ? `c.cat_group IN (${toSqlQueryParameters(ids)}) AND`
+    : '';
+  const categoryQuery = `SELECT c.* FROM categories c WHERE ${categoryWhereIn} c.tombstone = 0
+    ORDER BY c.sort_order, c.id`;
+
+  const groups = ids
+    ? await all(categoryGroupQuery, [...ids])
+    : await all(categoryGroupQuery);
+
+  const categories = ids
+    ? await all(categoryQuery, [...ids])
+    : await all(categoryQuery);
 
   return groups.map(group => {
     return {
@@ -536,26 +554,58 @@ export function getPayees() {
     SELECT p.*, COALESCE(a.name, p.name) AS name FROM payees p
     LEFT JOIN accounts a ON (p.transfer_acct = a.id AND a.tombstone = 0)
     WHERE p.tombstone = 0 AND (p.transfer_acct IS NULL OR a.id IS NOT NULL)
-    ORDER BY p.transfer_acct IS NULL DESC, p.name COLLATE NOCASE
+    ORDER BY p.transfer_acct IS NULL DESC, p.name COLLATE NOCASE, a.offbudget, a.sort_order
   `);
 }
 
-export function syncGetOrphanedPayees() {
+export function getCommonPayees() {
+  const twelveWeeksAgo = toDateRepr(
+    monthUtils.subWeeks(monthUtils.currentDate(), 12),
+  );
+  const limit = 10;
   return all(`
-  SELECT p.id FROM payees p
-  LEFT JOIN payee_mapping pm ON pm.id = p.id
-  LEFT JOIN v_transactions_internal_alive t ON t.payee = pm.targetId
-  WHERE p.tombstone = 0 AND p.transfer_acct IS NULL AND t.id IS NULL
-`);
+    SELECT     p.id as id, p.name as name, p.favorite as favorite,
+      p.category as category, TRUE as common, NULL as transfer_acct,
+    count(*) as c,
+    max(t.date) as latest
+    FROM payees p
+    LEFT JOIN v_transactions_internal_alive t on t.payee == p.id
+    WHERE LENGTH(p.name) > 0
+    AND p.tombstone = 0
+    AND t.date > ${twelveWeeksAgo}
+    GROUP BY p.id
+    ORDER BY c DESC ,p.transfer_acct IS NULL DESC, p.name
+    COLLATE NOCASE
+    LIMIT ${limit}
+  `);
+}
+
+/* eslint-disable rulesdir/typography */
+const orphanedPayeesQuery = `
+  SELECT p.id
+  FROM payees p
+    LEFT JOIN payee_mapping pm ON pm.id = p.id
+    LEFT JOIN v_transactions_internal_alive t ON t.payee = pm.targetId
+  WHERE p.tombstone = 0
+    AND p.transfer_acct IS NULL
+    AND t.id IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM rules r,
+      json_each(r.conditions) as cond
+      WHERE r.tombstone = 0
+        AND json_extract(cond.value, '$.field') = 'description'
+        AND json_extract(cond.value, '$.value') = pm.targetId
+    );
+`;
+/* eslint-enable rulesdir/typography */
+
+export function syncGetOrphanedPayees() {
+  return all(orphanedPayeesQuery);
 }
 
 export async function getOrphanedPayees() {
-  const rows = await all(`
-    SELECT p.id FROM payees p
-    LEFT JOIN payee_mapping pm ON pm.id = p.id
-    LEFT JOIN v_transactions_internal_alive t ON t.payee = pm.targetId
-    WHERE p.tombstone = 0 AND p.transfer_acct IS NULL AND t.id IS NULL
-  `);
+  const rows = await all(orphanedPayeesQuery);
   return rows.map(row => row.id);
 }
 
@@ -653,4 +703,8 @@ export function updateTransaction(transaction) {
 
 export async function deleteTransaction(transaction) {
   return delete_('transactions', transaction.id);
+}
+
+function toSqlQueryParameters(params: unknown[]) {
+  return params.map(() => '?').join(',');
 }

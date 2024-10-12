@@ -1,270 +1,186 @@
-// @ts-strict-ignore
 import React, {
   useEffect,
   useRef,
   useLayoutEffect,
-  type ReactNode,
   useState,
-  type ComponentProps,
-  type ComponentType,
+  type ReactNode,
+  type ComponentPropsWithoutRef,
   type ComponentPropsWithRef,
 } from 'react';
+import {
+  ModalOverlay as ReactAriaModalOverlay,
+  Modal as ReactAriaModal,
+  Dialog,
+} from 'react-aria-components';
 import { useHotkeysContext } from 'react-hotkeys-hook';
-import ReactModal from 'react-modal';
 
-import { useHover } from 'usehooks-ts';
+import { AutoTextSize } from 'auto-text-size';
+import { css } from 'glamor';
 
-import { useMergedRefs } from '../../hooks/useMergedRefs';
+import { useModalState } from '../../hooks/useModalState';
 import { AnimatedLoading } from '../../icons/AnimatedLoading';
 import { SvgLogo } from '../../icons/logo';
 import { SvgDelete } from '../../icons/v0';
-import { SvgClose } from '../../icons/v1';
 import { type CSSProperties, styles, theme } from '../../style';
 import { tokens } from '../../tokens';
 
-import { Button } from './Button';
+import { Button } from './Button2';
 import { Input } from './Input';
 import { Text } from './Text';
-import { Tooltip } from './Tooltip';
+import { TextOneLine } from './TextOneLine';
 import { View } from './View';
 
-export type ModalProps = {
-  title?: ReactNode;
-  isCurrent?: boolean;
-  isHidden?: boolean;
-  children: ReactNode | (() => ReactNode);
-  size?: { width?: CSSProperties['width']; height?: CSSProperties['height'] };
-  padding?: CSSProperties['padding'];
-  showHeader?: boolean;
-  leftHeaderContent?: ReactNode;
-  CloseButton?: ComponentType<ComponentPropsWithRef<typeof ModalCloseButton>>;
-  showTitle?: boolean;
-  showOverlay?: boolean;
-  loading?: boolean;
+type ModalProps = ComponentPropsWithRef<typeof ReactAriaModal> & {
+  name: string;
+  isLoading?: boolean;
   noAnimation?: boolean;
-  focusAfterClose?: boolean;
-  stackIndex?: number;
-  parent?: HTMLElement;
   style?: CSSProperties;
-  contentStyle?: CSSProperties;
-  overlayStyle?: CSSProperties;
   onClose?: () => void;
+  containerProps?: {
+    style?: CSSProperties;
+  };
 };
 
 export const Modal = ({
-  title,
-  isCurrent,
-  isHidden,
-  size,
-  padding = 10,
-  showHeader = true,
-  leftHeaderContent,
-  CloseButton: CloseButtonComponent = ModalCloseButton,
-  showTitle = true,
-  showOverlay = true,
-  loading = false,
+  name,
+  isLoading = false,
   noAnimation = false,
-  focusAfterClose = true,
-  stackIndex,
-  parent,
   style,
-  contentStyle,
-  overlayStyle,
   children,
   onClose,
+  containerProps,
+  ...props
 }: ModalProps) => {
   const { enableScope, disableScope } = useHotkeysContext();
 
   // This deactivates any key handlers in the "app" scope
-  const scopeId = `modal-${stackIndex}-${title}`;
   useEffect(() => {
-    enableScope(scopeId);
-    return () => disableScope(scopeId);
-  }, [enableScope, disableScope, scopeId]);
+    enableScope(name);
+    return () => disableScope(name);
+  }, [enableScope, disableScope, name]);
+
+  const { isHidden, isActive, onClose: closeModal } = useModalState();
+
+  const handleOnClose = () => {
+    closeModal();
+    onClose?.();
+  };
 
   return (
-    <ReactModal
-      isOpen={true}
-      onRequestClose={onClose}
-      shouldCloseOnOverlayClick={true}
-      shouldFocusAfterRender
-      shouldReturnFocusAfterClose={focusAfterClose}
-      appElement={document.querySelector('#root') as HTMLElement}
-      parentSelector={parent && (() => parent)}
+    <ReactAriaModalOverlay
+      data-testid={`${name}-modal`}
+      isDismissable
+      defaultOpen={true}
+      onOpenChange={isOpen => !isOpen && handleOnClose?.()}
       style={{
-        content: {
-          display: 'flex',
-          height: 'fit-content',
-          width: 'fit-content',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          justifyContent: 'center',
-          alignItems: 'center',
-          overflow: 'visible',
-          border: 0,
-          fontSize: 14,
-          backgroundColor: 'transparent',
-          padding: 0,
-          pointerEvents: 'auto',
-          margin: 'auto',
-          ...contentStyle,
-        },
-        overlay: {
-          display: 'flex',
-          zIndex: 3000,
-          backgroundColor:
-            showOverlay && stackIndex === 0 ? 'rgba(0, 0, 0, .1)' : 'none',
-          pointerEvents: showOverlay ? 'auto' : 'none',
-          ...overlayStyle,
-          ...(parent
-            ? {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }
-            : {}),
-        },
+        position: 'fixed',
+        inset: 0,
+        zIndex: 3000,
+        overflowY: 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 14,
+        backdropFilter: 'blur(1px) brightness(0.9)',
+        ...style,
       }}
+      {...props}
     >
-      <ModalContent
-        noAnimation={noAnimation}
-        isCurrent={isCurrent}
-        size={size}
-        style={{
-          flex: 1,
-          padding,
-          willChange: 'opacity, transform',
-          maxWidth: '90vw',
-          minWidth: '90vw',
-          maxHeight: '90vh',
-          minHeight: 0,
-          borderRadius: 6,
-          //border: '1px solid ' + theme.modalBorder,
-          color: theme.pageText,
-          backgroundColor: theme.modalBackground,
-          opacity: isHidden ? 0 : 1,
-          [`@media (min-width: ${tokens.breakpoint_small})`]: {
-            minWidth: tokens.breakpoint_small,
-          },
-          ...styles.shadowLarge,
-          ...style,
-          ...styles.lightScrollbar,
-        }}
-      >
-        {showHeader && (
-          <View
+      <ReactAriaModal>
+        {modalProps => (
+          <Dialog
+            aria-label="Modal dialog"
+            className={`${css(styles.lightScrollbar)}`}
             style={{
-              justifyContent: 'center',
-              alignItems: 'center',
-              position: 'relative',
-              height: 60,
+              outline: 'none', // remove focus outline
             }}
           >
-            <View
+            <ModalContentContainer
+              noAnimation={noAnimation}
+              isActive={isActive(name)}
+              {...containerProps}
               style={{
-                position: 'absolute',
-                left: 0,
+                flex: 1,
+                padding: 10,
+                willChange: 'opacity, transform',
+                maxWidth: '90vw',
+                minWidth: '90vw',
+                maxHeight: '90vh',
+                minHeight: 0,
+                borderRadius: 6,
+                //border: '1px solid ' + theme.modalBorder,
+                color: theme.pageText,
+                backgroundColor: theme.modalBackground,
+                opacity: isHidden ? 0 : 1,
+                [`@media (min-width: ${tokens.breakpoint_small})`]: {
+                  minWidth: tokens.breakpoint_small,
+                },
+                overflowY: 'auto',
+                ...styles.shadowLarge,
+                ...containerProps?.style,
               }}
             >
-              {leftHeaderContent}
-            </View>
-
-            {showTitle && (
-              <View
-                style={{
-                  textAlign: 'center',
-                  // We need to force a width for the text-overflow
-                  // ellipses to work because we are aligning center.
-                  width: 'calc(100% - 60px)',
-                }}
-              >
-                {!title ? (
-                  <SvgLogo
-                    width={30}
-                    height={30}
-                    style={{ justifyContent: 'center', alignSelf: 'center' }}
+              <View style={{ paddingTop: 0, flex: 1, flexShrink: 0 }}>
+                {typeof children === 'function'
+                  ? children(modalProps)
+                  : children}
+              </View>
+              {isLoading && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: theme.pageBackground,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                  }}
+                >
+                  <AnimatedLoading
+                    style={{ width: 20, height: 20 }}
+                    color={theme.pageText}
                   />
-                ) : typeof title === 'string' || typeof title === 'number' ? (
-                  <ModalTitle title={`${title}`} />
-                ) : (
-                  title
-                )}
-              </View>
-            )}
-
-            {onClose && (
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                }}
-              >
-                <CloseButtonComponent onClick={onClose} />
-              </View>
-            )}
-          </View>
+                </View>
+              )}
+            </ModalContentContainer>
+          </Dialog>
         )}
-        <View style={{ paddingTop: 0, flex: 1 }}>
-          {typeof children === 'function' ? children() : children}
-        </View>
-        {loading && (
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: theme.pageBackground,
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-          >
-            <AnimatedLoading
-              style={{ width: 20, height: 20 }}
-              color={theme.pageText}
-            />
-          </View>
-        )}
-      </ModalContent>
-    </ReactModal>
+      </ReactAriaModal>
+    </ReactAriaModalOverlay>
   );
 };
 
-type ModalContentProps = {
+type ModalContentContainerProps = {
   style?: CSSProperties;
-  size?: ModalProps['size'];
   noAnimation?: boolean;
-  isCurrent?: boolean;
-  stackIndex?: number;
+  isActive?: boolean;
   children: ReactNode;
 };
 
-const ModalContent = ({
+const ModalContentContainer = ({
   style,
-  size,
   noAnimation,
-  isCurrent,
-  stackIndex,
+  isActive,
   children,
-}: ModalContentProps) => {
-  const contentRef = useRef(null);
+}: ModalContentContainerProps) => {
+  const contentRef = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
   const rotateFactor = useRef(Math.random() * 10 - 5);
 
   useLayoutEffect(() => {
-    if (contentRef.current == null) {
+    if (!contentRef.current) {
       return;
     }
 
     function setProps() {
-      if (isCurrent) {
+      if (!contentRef.current) {
+        return;
+      }
+
+      if (isActive) {
         contentRef.current.style.transform = 'translateY(0px) scale(1)';
         contentRef.current.style.pointerEvents = 'auto';
       } else {
@@ -275,7 +191,7 @@ const ModalContent = ({
 
     if (!mounted.current) {
       if (noAnimation) {
-        contentRef.current.style.opacity = 1;
+        contentRef.current.style.opacity = '1';
         contentRef.current.style.transform = 'translateY(0px) scale(1)';
 
         setTimeout(() => {
@@ -285,7 +201,7 @@ const ModalContent = ({
           }
         }, 0);
       } else {
-        contentRef.current.style.opacity = 0;
+        contentRef.current.style.opacity = '0';
         contentRef.current.style.transform = 'translateY(10px) scale(1)';
 
         setTimeout(() => {
@@ -293,7 +209,7 @@ const ModalContent = ({
             mounted.current = true;
             contentRef.current.style.transition =
               'opacity .1s, transform .1s cubic-bezier(.42, 0, .58, 1)';
-            contentRef.current.style.opacity = 1;
+            contentRef.current.style.opacity = '1';
             setProps();
           }
         }, 0);
@@ -301,15 +217,14 @@ const ModalContent = ({
     } else {
       setProps();
     }
-  }, [noAnimation, isCurrent, stackIndex]);
+  }, [noAnimation, isActive]);
 
   return (
     <View
       innerRef={contentRef}
       style={{
         ...style,
-        ...(size && { width: size.width, height: size.height }),
-        ...(noAnimation && !isCurrent && { display: 'none' }),
+        ...(noAnimation && !isActive && { display: 'none' }),
       }}
     >
       {children}
@@ -330,11 +245,11 @@ export const ModalButtons = ({
   focusButton = false,
   children,
 }: ModalButtonsProps) => {
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (focusButton && containerRef.current) {
-      const button = containerRef.current.querySelector(
+      const button = containerRef.current.querySelector<HTMLButtonElement>(
         'button:not([data-hidden])',
       );
 
@@ -360,6 +275,78 @@ export const ModalButtons = ({
   );
 };
 
+type ModalHeaderProps = {
+  leftContent?: ReactNode;
+  showLogo?: boolean;
+  title?: ReactNode;
+  rightContent?: ReactNode;
+};
+
+export function ModalHeader({
+  leftContent,
+  showLogo,
+  title,
+  rightContent,
+}: ModalHeaderProps) {
+  return (
+    <View
+      role="heading"
+      style={{
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+        height: 60,
+      }}
+    >
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+        }}
+      >
+        {leftContent}
+      </View>
+
+      {(title || showLogo) && (
+        <View
+          style={{
+            textAlign: 'center',
+            // We need to force a width for the text-overflow
+            // ellipses to work because we are aligning center.
+            width: 'calc(100% - 60px)',
+          }}
+        >
+          {showLogo && (
+            <SvgLogo
+              aria-label="Modal logo"
+              width={30}
+              height={30}
+              style={{ justifyContent: 'center', alignSelf: 'center' }}
+            />
+          )}
+          {title &&
+            (typeof title === 'string' || typeof title === 'number' ? (
+              <ModalTitle title={`${title}`} />
+            ) : (
+              title
+            ))}
+        </View>
+      )}
+
+      {rightContent && (
+        <View
+          style={{
+            position: 'absolute',
+            right: 0,
+          }}
+        >
+          {rightContent}
+        </View>
+      )}
+    </View>
+  );
+}
+
 type ModalTitleProps = {
   title: string;
   isEditable?: boolean;
@@ -377,52 +364,21 @@ export function ModalTitle({
   shrinkOnOverflow = false,
 }: ModalTitleProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const tooltipTriggerRef = useRef();
 
-  // Dynamic font size to avoid ellipsis.
-  const textRef = useRef<HTMLSpanElement>();
-  const [textOverflowed, setTextOverflowed] = useState(false);
-  const [textFontSize, setTextFontSize] = useState(25);
-
-  useEffect(() => {
-    const containerWidth = textRef.current.offsetWidth;
-    const textWidth = textRef.current.scrollWidth;
-
-    if (textWidth > containerWidth) {
-      setTextOverflowed(true);
-    } else {
-      setTextOverflowed(false);
-    }
-  }, [title]);
-
-  useEffect(() => {
-    if (textOverflowed && shrinkOnOverflow) {
-      const containerWidth = textRef.current.offsetWidth;
-      const textWidth = textRef.current.scrollWidth;
-      const newFontSize = Math.floor(
-        (containerWidth / textWidth) * textFontSize,
-      );
-      setTextFontSize(newFontSize);
-    }
-  }, [title, textFontSize, shrinkOnOverflow, textOverflowed]);
-
-  const mergedTextRef = useMergedRefs(textRef, tooltipTriggerRef);
-  const isHovered = useHover(tooltipTriggerRef);
-
-  const _onEdit = () => {
+  const onTitleClick = () => {
     if (isEditable) {
       setIsEditing(true);
     }
   };
 
-  const _onTitleUpdate = newTitle => {
+  const _onTitleUpdate = (newTitle: string) => {
     if (newTitle !== title) {
       onTitleUpdate?.(newTitle);
     }
     setIsEditing(false);
   };
 
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (isEditing) {
       if (inputRef.current) {
@@ -453,55 +409,57 @@ export function ModalTitle({
       }}
     />
   ) : (
-    <Tooltip
-      content={
-        <View
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      {shrinkOnOverflow ? (
+        <AutoTextSize
+          as={Text}
+          minFontSizePx={15}
+          maxFontSizePx={25}
+          onClick={onTitleClick}
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            maxWidth: '90vw',
+            fontSize: 25,
+            fontWeight: 700,
+            textAlign: 'center',
+            ...(isEditable && styles.underlinedText),
+            ...style,
           }}
         >
-          <SvgClose style={{ width: 10, height: 10, flexShrink: 0 }} />
-          <Text style={styles.mediumText}>{title}</Text>
-        </View>
-      }
-      placement="top"
-      triggerRef={tooltipTriggerRef}
-      isOpen={textOverflowed && isHovered}
-      offset={10}
-    >
-      <Text
-        innerRef={mergedTextRef}
-        style={{
-          fontSize: textFontSize,
-          fontWeight: 700,
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          ...(isEditable && styles.underlinedText),
-          ...style,
-        }}
-        onClick={_onEdit}
-      >
-        {title}
-      </Text>
-    </Tooltip>
+          {title}
+        </AutoTextSize>
+      ) : (
+        <TextOneLine
+          onClick={onTitleClick}
+          style={{
+            fontSize: 25,
+            fontWeight: 700,
+            textAlign: 'center',
+            ...(isEditable && styles.underlinedText),
+            ...style,
+          }}
+        >
+          {title}
+        </TextOneLine>
+      )}
+    </View>
   );
 }
 
 type ModalCloseButtonProps = {
-  onClick: ComponentProps<typeof Button>['onClick'];
+  onPress: ComponentPropsWithoutRef<typeof Button>['onPress'];
   style?: CSSProperties;
 };
 
-export function ModalCloseButton({ onClick, style }: ModalCloseButtonProps) {
+export function ModalCloseButton({ onPress, style }: ModalCloseButtonProps) {
   return (
     <Button
-      type="bare"
-      onClick={onClick}
+      variant="bare"
+      onPress={onPress}
       style={{ padding: '10px 10px' }}
       aria-label="Close"
     >

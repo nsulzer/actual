@@ -1,15 +1,19 @@
 import { type NavigateFunction } from 'react-router-dom';
 
+import * as monthUtils from 'loot-core/src/shared/months';
 import { type AccountEntity } from 'loot-core/types/models/account';
 import { type CategoryEntity } from 'loot-core/types/models/category';
 import { type CategoryGroupEntity } from 'loot-core/types/models/category-group';
+import { type balanceTypeOpType } from 'loot-core/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
+
+import { ReportOptions } from '../ReportOptions';
 
 type showActivityProps = {
   navigate: NavigateFunction;
   categories: { list: CategoryEntity[]; grouped: CategoryGroupEntity[] };
   accounts: AccountEntity[];
-  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp: balanceTypeOpType;
   filters: RuleConditionEntity[];
   showHiddenCategories: boolean;
   showOffBudget: boolean;
@@ -18,6 +22,7 @@ type showActivityProps = {
   endDate?: string;
   field?: string;
   id?: string;
+  interval?: string;
 };
 
 export function showActivity({
@@ -33,35 +38,47 @@ export function showActivity({
   endDate,
   field,
   id,
+  interval = 'Day',
 }: showActivityProps) {
-  const amount =
-    balanceTypeOp === 'totalDebts' || type === 'debts' ? 'lte' : 'gte';
+  const isOutFlow =
+    balanceTypeOp === 'totalDebts' || type === 'debts' ? true : false;
   const hiddenCategories = categories.list.filter(f => f.hidden).map(e => e.id);
   const offBudgetAccounts = accounts.filter(f => f.offbudget).map(e => e.id);
+  const fromDate =
+    interval === 'Weekly'
+      ? 'dayFromDate'
+      : (((ReportOptions.intervalMap.get(interval) || 'Day').toLowerCase() +
+          'FromDate') as 'dayFromDate' | 'monthFromDate' | 'yearFromDate');
+  const isDateOp = interval === 'Weekly' || type !== 'time';
 
-  const conditions = [
+  const filterConditions = [
     ...filters,
     id && { field, op: 'is', value: id, type: 'id' },
     {
       field: 'date',
-      op: type === 'time' ? 'is' : 'gte',
-      value: startDate,
-      options: { date: true },
+      op: isDateOp ? 'gte' : 'is',
+      value: isDateOp ? startDate : monthUtils[fromDate](startDate),
+      type: 'date',
     },
-    type !== 'time' && {
+    isDateOp && {
       field: 'date',
       op: 'lte',
       value: endDate,
       options: { date: true },
     },
     !(
-      balanceTypeOp === 'totalTotals' &&
-      (type === 'totals' || type === 'time')
+      ['netAssets', 'netDebts'].includes(balanceTypeOp) ||
+      (balanceTypeOp === 'totalTotals' &&
+        (type === 'totals' || type === 'time'))
     ) && {
       field: 'amount',
-      op: amount,
+      op: 'gte',
       value: 0,
-      type: 'number',
+      options: {
+        type: 'number',
+        inflow: !isOutFlow,
+        outflow: isOutFlow,
+      },
     },
     hiddenCategories.length > 0 &&
       !showHiddenCategories && {
@@ -81,7 +98,7 @@ export function showActivity({
   navigate('/accounts', {
     state: {
       goBack: true,
-      conditions,
+      filterConditions,
     },
   });
 }

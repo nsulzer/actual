@@ -42,12 +42,14 @@ export function hasFieldsChanged<T extends object>(
   return changed;
 }
 
+export type Diff<T extends { id: string }> = {
+  added: T[];
+  updated: Partial<T>[];
+  deleted: Partial<T>[];
+};
+
 export function applyChanges<T extends { id: string }>(
-  changes: {
-    added?: T[];
-    updated?: T[];
-    deleted?: T[];
-  },
+  changes: Diff<T>,
   items: T[],
 ) {
   items = [...items];
@@ -118,15 +120,18 @@ function _groupById<T extends { id: string }>(data: T[]) {
   return res;
 }
 
-export function diffItems<T extends { id: string }>(items: T[], newItems: T[]) {
+export function diffItems<T extends { id: string }>(
+  items: T[],
+  newItems: T[],
+): Diff<T> {
   const grouped = _groupById(items);
   const newGrouped = _groupById(newItems);
   const added: T[] = [];
   const updated: Partial<T>[] = [];
 
-  const deleted = items
+  const deleted: Partial<T>[] = items
     .filter(item => !newGrouped.has(item.id))
-    .map(item => ({ id: item.id }));
+    .map(item => ({ id: item.id }) as Partial<T>);
 
   newItems.forEach(newItem => {
     const item = grouped.get(newItem.id);
@@ -143,7 +148,9 @@ export function diffItems<T extends { id: string }>(items: T[], newItems: T[]) {
   return { added, updated, deleted };
 }
 
-export function groupById<T extends { id: string }>(data: T[]) {
+export function groupById<T extends { id: string }>(
+  data: T[],
+): Record<string, T> {
   const res: { [key: string]: T } = {};
   for (let i = 0; i < data.length; i++) {
     const item = data[i];
@@ -217,12 +224,20 @@ export function appendDecimals(
   return amountToCurrency(currencyToAmount(result));
 }
 
-type NumberFormats =
-  | 'comma-dot'
-  | 'dot-comma'
-  | 'space-comma'
-  | 'space-dot'
-  | 'comma-dot-in';
+const NUMBER_FORMATS = [
+  'comma-dot',
+  'dot-comma',
+  'space-comma',
+  'apostrophe-dot',
+  'comma-dot',
+  'comma-dot-in',
+] as const;
+
+type NumberFormats = (typeof NUMBER_FORMATS)[number];
+
+export function isNumberFormat(input: string = ''): input is NumberFormats {
+  return (NUMBER_FORMATS as readonly string[]).includes(input);
+}
 
 export const numberFormats: Array<{
   value: NumberFormats;
@@ -231,8 +246,8 @@ export const numberFormats: Array<{
 }> = [
   { value: 'comma-dot', label: '1,000.33', labelNoFraction: '1,000' },
   { value: 'dot-comma', label: '1.000,33', labelNoFraction: '1.000' },
-  { value: 'space-comma', label: '1 000,33', labelNoFraction: '1 000' },
-  { value: 'space-dot', label: '1 000.33', labelNoFraction: '1 000' },
+  { value: 'space-comma', label: '1\xa0000,33', labelNoFraction: '1\xa0000' },
+  { value: 'apostrophe-dot', label: '1’000.33', labelNoFraction: '1’000' },
   { value: 'comma-dot-in', label: '1,00,000.33', labelNoFraction: '1,00,000' },
 ];
 
@@ -269,8 +284,8 @@ export function getNumberFormat({
       regex = /[^-0-9,]/g;
       separator = ',';
       break;
-    case 'space-dot':
-      locale = 'dje';
+    case 'apostrophe-dot':
+      locale = 'de-CH';
       regex = /[^-0-9,.]/g;
       separator = '.';
       separatorRegex = /[,.]/g;
@@ -341,7 +356,10 @@ export function amountToCurrency(n) {
 }
 
 export function amountToCurrencyNoDecimal(n) {
-  return getNumberFormat({ hideFraction: true }).formatter.format(n);
+  return getNumberFormat({
+    ...numberFormatConfig,
+    hideFraction: true,
+  }).formatter.format(n);
 }
 
 export function currencyToAmount(str: string) {
@@ -409,10 +427,10 @@ export function looselyParseAmount(amount: string) {
     amount = amount.replace('(', '-').replace(')', '');
   }
 
-  //look for a decimal marker, then look for either 5 or 1-2 decimal places.
+  // Look for a decimal marker, then look for either 1-2 or 5-9 decimal places.
   // This avoids matching against 3 places which may not actually be decimal
-  const m = amount.match(/[.,]([^.,]{5}|[^.,]{1,2})$/);
-  if (!m || m.index === undefined || m.index === 0) {
+  const m = amount.match(/[.,]([^.,]{5,9}|[^.,]{1,2})$/);
+  if (!m || m.index === undefined) {
     return safeNumber(parseFloat(extractNumbers(amount)));
   }
 
