@@ -1,5 +1,5 @@
 // @ts-strict-ignore
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
@@ -19,11 +19,16 @@ import {
 } from 'loot-core/src/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
+import { useAccounts } from '../../../hooks/useAccounts';
+import { useCategories } from '../../../hooks/useCategories';
+import { useNavigate } from '../../../hooks/useNavigate';
 import { theme, type CSSProperties } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
 import { PrivacyFilter } from '../../PrivacyFilter';
 import { Container } from '../Container';
 import { numberFormatterTooltip } from '../numberFormatter';
+
+import { showActivity } from './showActivity';
 
 type PayloadItem = {
   name: string;
@@ -103,6 +108,10 @@ function SankeyNode({
   payload,
   containerWidth,
   compact,
+  style,
+  onMouseLeave,
+  onMouseEnter,
+  onClick,
 }) {
   const isOut = x + width + 6 > containerWidth;
   const payloadValue = amountToCurrency(integerToAmount(payload.value));
@@ -118,6 +127,10 @@ function SankeyNode({
         height={height}
         fill={payload.color}
         fillOpacity="1"
+        style={style}
+        onMouseLeave={onMouseLeave}
+        onMouseEnter={onMouseEnter}
+        onClick={onClick}
       />
       <text
         textAnchor={isOut ? 'end' : 'start'}
@@ -283,6 +296,11 @@ export function SankeyGraph({
   showOffBudget,
   showTooltip = true,
 }: SankeyGraphProps) {
+  const navigate = useNavigate();
+  const categories = useCategories();
+  const accounts = useAccounts();
+  const [pointer, setPointer] = useState('');
+
   const sankeyData = ConvertToSankey(data, groupBy);
 
   const margin = {
@@ -316,6 +334,30 @@ export function SankeyGraph({
                     {...props}
                     containerWidth={width}
                     compact={compact}
+                    style={{ cursor: pointer }}
+                    onMouseLeave={() => setPointer('')}
+                    onMouseEnter={() =>
+                      !['Group', 'Interval'].includes(groupBy) &&
+                      setPointer('pointer')
+                    }
+                    onClick={item =>
+                      ((compact && showTooltip) || !compact) &&
+                      !['Group', 'Interval'].includes(groupBy) &&
+                      showActivity({
+                        navigate,
+                        categories,
+                        accounts,
+                        balanceTypeOp,
+                        filters,
+                        showHiddenCategories,
+                        showOffBudget,
+                        type: 'totals',
+                        startDate: data.startDate,
+                        endDate: data.endDate,
+                        field: groupBy.toLowerCase(),
+                        id: item.id,
+                      })
+                    }
                   />
                 )}
                 sort={true}
