@@ -12,7 +12,10 @@ import {
 } from 'recharts';
 
 import { amountToCurrency } from 'loot-core/src/shared/util';
-import { type DataEntity } from 'loot-core/src/types/models/reports';
+import {
+  type balanceTypeOpType,
+  type DataEntity,
+} from 'loot-core/src/types/models/reports';
 import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 
 import { theme, type CSSProperties } from '../../../style';
@@ -24,7 +27,7 @@ import { numberFormatterTooltip } from '../numberFormatter';
 type CustomTooltipProps = {
   active?: boolean;
   payload?;
-  balanceTypeOp: 'totalAssets' | 'totalTotals' | 'totalDebts';
+  balanceTypeOp: balanceTypeOpType;
 };
 
 const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
@@ -238,7 +241,7 @@ type SankeyGraphProps = {
   data: DataEntity;
   filters: RuleConditionEntity[];
   groupBy: string;
-  balanceTypeOp: 'totalAssets' | 'totalDebts' | 'totalTotals';
+  balanceTypeOp: balanceTypeOpType;
   compact?: boolean;
   viewLabels: boolean;
   showHiddenCategories?: boolean;
