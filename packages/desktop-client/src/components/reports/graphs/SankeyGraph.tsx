@@ -24,9 +24,25 @@ import { PrivacyFilter } from '../../PrivacyFilter';
 import { Container } from '../Container';
 import { numberFormatterTooltip } from '../numberFormatter';
 
+type PayloadItem = {
+  name: string;
+  value: number;
+  payload: {
+    payload: {
+      name: string;
+      source: {
+        name: string;
+      };
+      target: {
+        name: string;
+      };
+    };
+  };
+};
+
 type CustomTooltipProps = {
   active?: boolean;
-  payload?;
+  payload?: PayloadItem[];
   balanceTypeOp: balanceTypeOpType;
 };
 
