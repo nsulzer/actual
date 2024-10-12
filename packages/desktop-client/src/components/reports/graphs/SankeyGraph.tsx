@@ -1,5 +1,6 @@
 // @ts-strict-ignore
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
 import { css } from 'glamor';
@@ -47,6 +48,7 @@ type CustomTooltipProps = {
 };
 
 const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+  const { t } = useTranslation();
   if (active && payload && payload.length) {
     return (
       <div
@@ -63,7 +65,9 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
         <div>
           {payload[0].payload.payload.source && (
             <div style={{ marginBottom: 10 }}>
-              From <strong>{payload[0].payload.payload.source.name}</strong> to{' '}
+              {t('From')}{' '}
+              <strong>{payload[0].payload.payload.source.name}</strong>{' '}
+              {t('to')}{' '}
               <strong>{payload[0].payload.payload.target.name}</strong>
             </div>
           )}
@@ -140,7 +144,7 @@ function SankeyNode({
   );
 }
 
-function convertToSankey(data, groupBy: string) {
+function ConvertToSankey(data, groupBy: string) {
   // convert to nodes and edges
   // Split types:
   // Category:  Income Category -> Budget -> Group -> Category
@@ -151,23 +155,25 @@ function convertToSankey(data, groupBy: string) {
   const links = [];
   const nodeNames = [];
 
-  nodes.push({ name: 'Budget' });
-  nodeNames.push('Budget');
+  const { t } = useTranslation();
 
-  if (groupBy === 'Category') {
+  nodes.push({ name: t('Budget') });
+  nodeNames.push(t('Budget'));
+
+  if (groupBy === 'Category' && data.groupedData) {
     data.groupedData.forEach(group => {
       nodes.push({ name: group.name });
       nodeNames.push(group.name);
       if (group.totalTotals < 0) {
         links.push({
-          source: 'Budget',
+          source: t('Budget'),
           target: group.name,
           value: -amountToInteger(group.totalTotals),
         });
       } else {
         links.push({
           source: group.name,
-          target: 'Budget',
+          target: t('Budget'),
           value: amountToInteger(group.totalTotals),
         });
       }
@@ -195,7 +201,7 @@ function convertToSankey(data, groupBy: string) {
       nodeNames.push(split.name + 'out');
       if (split.totalDebts < 0) {
         links.push({
-          source: 'Budget',
+          source: t('Budget'),
           target: split.name + 'out',
           value: -amountToInteger(split.totalDebts),
         });
@@ -205,7 +211,7 @@ function convertToSankey(data, groupBy: string) {
       if (split.totalAssets > 0) {
         links.push({
           source: split.name + 'in',
-          target: 'Budget',
+          target: t('Budget'),
           value: amountToInteger(split.totalAssets),
         });
       }
@@ -217,14 +223,14 @@ function convertToSankey(data, groupBy: string) {
       nodeNames.push(split.name);
       if (split.totalTotals < 0) {
         links.push({
-          source: 'Budget',
+          source: t('Budget'),
           target: split.name,
           value: -amountToInteger(split.totalTotals),
         });
       } else {
         links.push({
           source: split.name,
-          target: 'Budget',
+          target: t('Budget'),
           value: amountToInteger(split.totalTotals),
         });
       }
@@ -277,7 +283,7 @@ export function SankeyGraph({
   showOffBudget,
   showTooltip = true,
 }: SankeyGraphProps) {
-  const sankeyData = convertToSankey(data, groupBy);
+  const sankeyData = ConvertToSankey(data, groupBy);
 
   const margin = {
     left: 0,
