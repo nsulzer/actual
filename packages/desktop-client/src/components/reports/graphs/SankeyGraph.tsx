@@ -108,6 +108,7 @@ function SankeyNode({
   payload,
   containerWidth,
   compact,
+  viewLabels,
   style,
   onMouseLeave,
   onMouseEnter,
@@ -139,20 +140,24 @@ function SankeyNode({
         fontSize="13"
         fill={theme.pageText}
         display={display}
+        dominantBaseline={viewLabels ? 'auto' : 'middle'}
       >
         {payload.name}
       </text>
-      <text
-        textAnchor={isOut ? 'end' : 'start'}
-        x={isOut ? x - 6 : x + width + 6}
-        y={y + height / 2 + 13}
-        fontSize="10"
-        strokeOpacity="1"
-        fill={theme.pageText}
-        display={display}
-      >
-        <PrivacyFilter>{payloadValue}</PrivacyFilter>
-      </text>
+      {viewLabels && (
+        <text
+          textAnchor={isOut ? 'end' : 'start'}
+          x={isOut ? x - 6 : x + width + 6}
+          y={y + height / 2 + 13}
+          fontSize="10"
+          strokeOpacity="1"
+          fill={theme.pageText}
+          display={display}
+        >
+          <PrivacyFilter>{payloadValue}</PrivacyFilter>
+        </text>
+      )}
+      )
     </Layer>
   );
 }
@@ -334,6 +339,7 @@ export function SankeyGraph({
                     {...props}
                     containerWidth={width}
                     compact={compact}
+                    viewLabels={viewLabels}
                     style={{ cursor: pointer }}
                     onMouseLeave={() => setPointer('')}
                     onMouseEnter={() =>
