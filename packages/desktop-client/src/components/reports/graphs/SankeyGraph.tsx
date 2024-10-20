@@ -157,12 +157,15 @@ function SankeyNode({
           <PrivacyFilter>{payloadValue}</PrivacyFilter>
         </text>
       )}
-      )
     </Layer>
   );
 }
 
-function ConvertToSankey(data, groupBy: string) {
+function ConvertToSankey(
+  data,
+  groupBy: string,
+  balanceTypeOp: balanceTypeOpType,
+) {
   // convert to nodes and edges
   // Split types:
   // Category:  Income Category -> Budget -> Group -> Category
@@ -175,12 +178,12 @@ function ConvertToSankey(data, groupBy: string) {
 
   const { t } = useTranslation();
 
-  nodes.push({ name: t('Budget') });
+  nodes.push({ id: null, name: t('Budget'), isMouse: true });
   nodeNames.push(t('Budget'));
 
   if (groupBy === 'Category' && data.groupedData) {
     data.groupedData.forEach(group => {
-      nodes.push({ name: group.name });
+      nodes.push({ id: null, name: group.name, isMouse: false });
       nodeNames.push(group.name);
       if (group.totalTotals < 0) {
         links.push({
@@ -196,7 +199,7 @@ function ConvertToSankey(data, groupBy: string) {
         });
       }
       group.categories.forEach(category => {
-        nodes.push({ name: category.name });
+        nodes.push({ id: category.id, name: category.name, isMouse: true });
         nodeNames.push(group.name + category.name);
         if (category.totalTotals < 0) {
           links.push({
@@ -215,18 +218,18 @@ function ConvertToSankey(data, groupBy: string) {
     });
   } else if (groupBy === 'Account') {
     data.data.forEach(split => {
-      nodes.push({ name: split.name });
-      nodeNames.push(split.name + 'out');
-      if (split.totalDebts < 0) {
+      if (split.totalDebts < 0 && !balanceTypeOp.includes('Assets')) {
+        nodes.push({ id: split.id, name: split.name, isMouse: true });
+        nodeNames.push(split.name + 'out');
         links.push({
           source: t('Budget'),
           target: split.name + 'out',
           value: -amountToInteger(split.totalDebts),
         });
       }
-      nodes.push({ name: split.name });
-      nodeNames.push(split.name + 'in');
-      if (split.totalAssets > 0) {
+      if (split.totalAssets > 0 && !balanceTypeOp.includes('Debts')) {
+        nodes.push({ id: split.id, name: split.name, isMouse: true });
+        nodeNames.push(split.name + 'in');
         links.push({
           source: split.name + 'in',
           target: t('Budget'),
@@ -237,7 +240,11 @@ function ConvertToSankey(data, groupBy: string) {
   } else {
     // Group or Payee
     data.data.forEach(split => {
-      nodes.push({ name: split.name });
+      if (groupBy === 'Payee') {
+        nodes.push({ id: split.id, name: split.name, isMouse: true });
+      } else {
+        nodes.push({ id: null, name: split.name, isMouse: false });
+      }
       nodeNames.push(split.name);
       if (split.totalTotals < 0) {
         links.push({
@@ -339,7 +346,7 @@ export function SankeyGraph({
   const accounts = useAccounts();
   const [pointer, setPointer] = useState('');
 
-  const sankeyData = ConvertToSankey(data, groupBy);
+  const sankeyData = ConvertToSankey(data, groupBy, balanceTypeOp);
 
   const margin = {
     left: 0,
@@ -376,12 +383,11 @@ export function SankeyGraph({
                     style={{ cursor: pointer }}
                     onMouseLeave={() => setPointer('')}
                     onMouseEnter={() =>
-                      !['Group', 'Interval'].includes(groupBy) &&
-                      setPointer('pointer')
+                      props.payload.isMouse && setPointer('pointer')
                     }
-                    onClick={item =>
+                    onClick={() =>
                       ((compact && showTooltip) || !compact) &&
-                      !['Group', 'Interval'].includes(groupBy) &&
+                      props.payload.isMouse &&
                       showActivity({
                         navigate,
                         categories,
@@ -394,7 +400,7 @@ export function SankeyGraph({
                         startDate: data.startDate,
                         endDate: data.endDate,
                         field: groupBy.toLowerCase(),
-                        id: item.id,
+                        id: props.payload.id,
                       })
                     }
                   />
