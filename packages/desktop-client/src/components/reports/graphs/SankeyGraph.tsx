@@ -1,5 +1,5 @@
 // @ts-strict-ignore
-import React, { useState } from 'react';
+import React, { useState, Component } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
@@ -276,6 +276,39 @@ function ConvertToSankey(data, groupBy: string) {
   };
 }
 
+class SankeyLink extends Component<any, any> {
+  render() {
+    const {
+      sourceX,
+      targetX,
+      sourceY,
+      targetY,
+      sourceControlX,
+      targetControlX,
+      linkWidth,
+      index,
+    } = this.props;
+    return (
+      <Layer key={`CustomLink${index}`}>
+        <path
+          d={`
+            M ${sourceX}        ,${sourceY + linkWidth / 2}
+            C ${sourceControlX} ,${sourceY + linkWidth / 2}
+              ${targetControlX} ,${targetY + linkWidth / 2}
+              ${targetX}        ,${targetY + linkWidth / 2}
+            L ${targetX}        ,${targetY - linkWidth / 2}
+            C ${targetControlX} ,${targetY - linkWidth / 2}
+              ${sourceControlX} ,${sourceY - linkWidth / 2}
+              ${sourceX}        ,${sourceY - linkWidth / 2}
+            Z
+          `}
+          fill={theme.pageBackground}
+        />
+      </Layer>
+    );
+  }
+}
+
 type SankeyGraphProps = {
   style?: CSSProperties;
   data: DataEntity;
@@ -367,10 +400,10 @@ export function SankeyGraph({
                   />
                 )}
                 sort={true}
-                iterations={1000}
                 nodePadding={padding}
                 margin={margin}
-                link={{ stroke: theme.pageBackground, strokeOpacity: 1 }}
+                link={<SankeyLink />}
+                linkCurvature={0.25}
               >
                 {showTooltip && (
                   <Tooltip
