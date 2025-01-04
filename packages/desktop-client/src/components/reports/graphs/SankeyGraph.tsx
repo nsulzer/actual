@@ -246,13 +246,13 @@ function ConvertToSankey(
         nodes.push({ id: null, name: split.name, isMouse: false });
       }
       nodeNames.push(split.name);
-      if (split.totalTotals < 0) {
+      if (split.totalTotals < 0 && !balanceTypeOp.includes('Assets')) {
         links.push({
           source: t('Budget'),
           target: split.name,
           value: -amountToInteger(split.totalTotals),
         });
-      } else {
+      } else if (!balanceTypeOp.includes('Debts')) {
         links.push({
           source: split.name,
           target: t('Budget'),
