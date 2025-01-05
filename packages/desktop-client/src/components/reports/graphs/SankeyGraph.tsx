@@ -1,9 +1,9 @@
 // @ts-strict-ignore
-import React, { useState, Component } from 'react';
+import React, { type CSSProperties, useState, Component } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { amountToInteger, integerToAmount } from '@actual-app/api/utils';
-import { css } from 'glamor';
+import { css } from '@emotion/css';
 import {
   Sankey,
   Tooltip,
@@ -22,7 +22,7 @@ import { type RuleConditionEntity } from 'loot-core/types/models/rule';
 import { useAccounts } from '../../../hooks/useAccounts';
 import { useCategories } from '../../../hooks/useCategories';
 import { useNavigate } from '../../../hooks/useNavigate';
-import { theme, type CSSProperties } from '../../../style';
+import { theme } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
 import { PrivacyFilter } from '../../PrivacyFilter';
 import { Container } from '../Container';
@@ -57,7 +57,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div
-        className={`${css({
+        className={css({
           zIndex: 1000,
           pointerEvents: 'none',
           borderRadius: 2,
@@ -65,7 +65,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
           backgroundColor: theme.menuBackground,
           color: theme.menuItemText,
           padding: 10,
-        })}`}
+        })}
       >
         <div>
           {payload[0].payload.payload.source && (
