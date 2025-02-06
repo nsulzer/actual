@@ -18,6 +18,7 @@ import {
 import { useFilters } from '../../../hooks/useFilters';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { useSyncedPref } from '../../../hooks/useSyncedPref';
+import { useFeatureFlag } from '../../../hooks/useFeatureFlag';
 import { useDispatch } from '../../../redux';
 import { theme } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
@@ -34,6 +35,7 @@ import { useResponsive } from '../../responsive/ResponsiveProvider';
 import { Change } from '../Change';
 import { CashFlowGraph } from '../graphs/CashFlowGraph';
 import { Header } from '../Header';
+import { ForecastHeader } from '../ForecastHeader';
 import { LoadingIndicator } from '../LoadingIndicator';
 import { calculateTimeRange } from '../reportRanges';
 import { cashFlowByDate } from '../spreadsheets/cash-flow-spreadsheet';
@@ -58,6 +60,8 @@ export function CashFlow() {
 
   return <CashFlowInner widget={widget} />;
 }
+
+const forecastFeatureFlag = useFeatureFlag('cashflowForecast')
 
 type CashFlowInnerProps = {
   widget?: CashFlowWidget;
@@ -253,6 +257,36 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
           )}
         </View>
       </Header>
+      { forecastFeatureFlag && (
+      <ForecastHeader
+          allMonths={allMonths}
+          start={start}
+          end={end}
+          earliestTransaction={earliestTransaction}
+          firstDayOfWeekIdx={firstDayOfWeekIdx}
+          mode={mode}
+          show1Month
+          onChangeDates={onChangeDates}
+          onApply={onApplyFilter}
+          filters={conditions}
+          onUpdateFilter={onUpdateFilter}
+          onDeleteFilter={onDeleteFilter}
+          conditionsOp={conditionsOp}
+          onConditionsOpChange={onConditionsOpChange}
+        >
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Button onPress={() => setShowBalance(state => !state)}>
+              {showBalance ? t('Hide balance') : t('Show balance')}
+            </Button>
+
+            {widget && (
+              <Button variant="primary" onPress={onSaveWidget}>
+                <Trans>Save widget</Trans>
+              </Button>
+            )}
+          </View>
+        </ForecastHeader>
+      )}
       <View
         style={{
           backgroundColor: theme.tableBackground,
