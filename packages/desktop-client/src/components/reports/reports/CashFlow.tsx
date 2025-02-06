@@ -15,10 +15,10 @@ import {
   type TimeFrame,
 } from 'loot-core/types/models';
 
+import { useFeatureFlag } from '../../../hooks/useFeatureFlag';
 import { useFilters } from '../../../hooks/useFilters';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { useSyncedPref } from '../../../hooks/useSyncedPref';
-import { useFeatureFlag } from '../../../hooks/useFeatureFlag';
 import { useDispatch } from '../../../redux';
 import { theme } from '../../../style';
 import { AlignedText } from '../../common/AlignedText';
@@ -33,9 +33,9 @@ import { MobilePageHeader, Page, PageHeader } from '../../Page';
 import { PrivacyFilter } from '../../PrivacyFilter';
 import { useResponsive } from '../../responsive/ResponsiveProvider';
 import { Change } from '../Change';
+import { ForecastHeader } from '../ForecastHeader';
 import { CashFlowGraph } from '../graphs/CashFlowGraph';
 import { Header } from '../Header';
-import { ForecastHeader } from '../ForecastHeader';
 import { LoadingIndicator } from '../LoadingIndicator';
 import { calculateTimeRange } from '../reportRanges';
 import { cashFlowByDate } from '../spreadsheets/cash-flow-spreadsheet';
@@ -61,8 +61,6 @@ export function CashFlow() {
   return <CashFlowInner widget={widget} />;
 }
 
-const forecastFeatureFlag = useFeatureFlag('cashflowForecast')
-
 type CashFlowInnerProps = {
   widget?: CashFlowWidget;
 };
@@ -84,6 +82,13 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
   );
 
   const [allMonths, setAllMonths] = useState<null | Array<{
+    name: string;
+    pretty: string;
+  }>>(null);
+
+  const [totalMonths, setTotalMonths] = useState(12);
+
+  const [allForecastMonths, setAllForecastMonths] = useState<null | Array<{
     name: string;
     pretty: string;
   }>>(null);
@@ -120,6 +125,11 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         ? monthUtils.monthFromDate(d.parseISO(trans.date))
         : monthUtils.currentMonth();
 
+      const totalMonths = monthUtils.differenceInCalendarMonths(
+        monthUtils.currentMonth(),
+        earliestMonth,
+      );
+
       const allMonths = monthUtils
         .rangeInclusive(earliestMonth, monthUtils.currentMonth())
         .map(month => ({
@@ -128,7 +138,20 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         }))
         .reverse();
 
+      const allForecastMonths = monthUtils
+        .rangeInclusive(
+          earliestMonth,
+          monthUtils.addYears(monthUtils.currentMonth(), 10),
+        )
+        .map(month => ({
+          name: month,
+          pretty: monthUtils.format(month, 'MMMM, yyyy'),
+        }))
+        .reverse();
+
+      setTotalMonths(totalMonths);
       setAllMonths(allMonths);
+      setAllForecastMonths(allForecastMonths);
     }
     run();
   }, []);
@@ -196,6 +219,30 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
   const [_firstDayOfWeekIdx] = useSyncedPref('firstDayOfWeekIdx');
   const firstDayOfWeekIdx = _firstDayOfWeekIdx || '0';
 
+  const forecastFeatureFlag = useFeatureFlag('cashflowForecast');
+
+  const allForecastSource = [
+    { name: 'none', pretty: t('None') },
+    { name: 'schedule', pretty: t('Schedule') },
+    { name: 'transactions', pretty: t('Transactions') },
+    { name: 'budget', pretty: t('Budget') },
+  ];
+
+  const allForecastMethods = [
+    { name: 'lastMonths', pretty: t('Average') },
+    { name: 'perMonth', pretty: t('Per-month Average') },
+    { name: 'minAvgMax', pretty: t('Min/Max/Average') },
+    { name: 'monteCarlo', pretty: t('Monte Carlo') },
+  ];
+
+  const [forecastSource, setForecastSource] = useState('none');
+  const [forecastMethod, setForecastMethod] = useState('lastMonths');
+
+  const [averageMonths, setAverageMonths] = useState(2);
+  const [averageYears, setAverageYears] = useState(2);
+  const forecastStart = monthUtils.dayFromDate(monthUtils.currentMonth());
+  const forecastEnd = monthUtils.dayFromDate(monthUtils.currentMonth());
+
   if (!allMonths || !data) {
     return null;
   }
@@ -230,7 +277,7 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
       padding={0}
     >
       <Header
-        allMonths={allMonths}
+        allMonths={forecastSource !== 'none' ? allForecastMonths : allMonths}
         start={start}
         end={end}
         earliestTransaction={earliestTransaction}
@@ -257,35 +304,23 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
           )}
         </View>
       </Header>
-      { forecastFeatureFlag && (
-      <ForecastHeader
+      {forecastFeatureFlag && (
+        <ForecastHeader
           allMonths={allMonths}
+          allForecastSource={allForecastSource}
+          allForecastMethods={allForecastMethods}
+          forecastSource={forecastSource}
+          forecastMethod={forecastMethod}
+          averageMonths={averageMonths}
+          averageYears={averageYears}
           start={start}
           end={end}
-          earliestTransaction={earliestTransaction}
-          firstDayOfWeekIdx={firstDayOfWeekIdx}
-          mode={mode}
-          show1Month
-          onChangeDates={onChangeDates}
-          onApply={onApplyFilter}
-          filters={conditions}
-          onUpdateFilter={onUpdateFilter}
-          onDeleteFilter={onDeleteFilter}
-          conditionsOp={conditionsOp}
-          onConditionsOpChange={onConditionsOpChange}
-        >
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button onPress={() => setShowBalance(state => !state)}>
-              {showBalance ? t('Hide balance') : t('Show balance')}
-            </Button>
-
-            {widget && (
-              <Button variant="primary" onPress={onSaveWidget}>
-                <Trans>Save widget</Trans>
-              </Button>
-            )}
-          </View>
-        </ForecastHeader>
+          setAverageMonths={setAverageMonths}
+          setAverageYears={setAverageYears}
+          setForecastSource={setForecastSource}
+          setForecastMethod={setForecastMethod}
+          maxMonths={totalMonths}
+        />
       )}
       <View
         style={{
@@ -378,6 +413,43 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
               picture of how available money fluctuates.
             </Paragraph>
           </Trans>
+          {forecastFeatureFlag && (
+            <Trans>
+              <Paragraph>
+                <strong>Forecasting</strong>
+              </Paragraph>
+              <Paragraph>
+                Forecasts are based on one of three sources:
+                <ul>
+                  <li>
+                    <strong>Schedule</strong> uses your scheduled transactions.
+                  </li>
+                  <li>
+                    <strong>Transactions</strong> and <strong>Budget</strong>{' '}
+                    use your past transactions or budget. These can be used to
+                    predict future cash flow using different models:
+                    <ul>
+                      <li>Average: The average of the last N months.</li>
+                      <li>
+                        Per-month Average: The average of each month the last N
+                        years. The forecast for each June, for example, is based
+                        on the average of all Junes.
+                      </li>
+                      <li>
+                        Min/Max/Average: This generates a range of scenarios,
+                        based on the minimum, maximum, and average of a range of
+                        months.
+                      </li>
+                      <li>
+                        Monte Carlo: this generates a range of scenarios based
+                        on the distribution of past months.
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </Paragraph>
+            </Trans>
+          )}
         </View>
       </View>
     </Page>

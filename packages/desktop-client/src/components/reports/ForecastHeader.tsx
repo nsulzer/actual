@@ -16,13 +16,14 @@ type ForecastHeaderProps = {
   forecastMethod: string;
   averageMonths: number;
   averageYears: number;
-  forecastStart: TimeFrame['start'];
-  forecastEnd: TimeFrame['end'];
+  start: TimeFrame['start'];
+  end: TimeFrame['end'];
   allMonths: Array<{ name: string; pretty: string }>;
   setAverageMonths: (averageMonths: number) => void;
   setAverageYears: (averageYears: number) => void;
   setForecastSource: (forecastSource: string) => void;
   setForecastMethod: (forecastMethod: string) => void;
+  maxMonths: number;
 };
 
 export function ForecastHeader({
@@ -32,13 +33,14 @@ export function ForecastHeader({
   forecastMethod,
   averageMonths,
   averageYears,
-  forecastStart,
-  forecastEnd,
+  start,
+  end,
   allMonths,
   setAverageMonths,
   setAverageYears,
   setForecastSource,
   setForecastMethod,
+  maxMonths,
 }: ForecastHeaderProps) {
   const { t } = useTranslation();
   const { isNarrowWidth } = useResponsive();
@@ -81,63 +83,83 @@ export function ForecastHeader({
                   pretty,
                 ])}
               />
+              {forecastMethod === 'lastMonths' && (
+                <SpaceBetween gap={5}>
+                  <View>{t('of past')}</View>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={maxMonths}
+                    onChangeValue={newValue =>
+                      setAverageMonths(Number(newValue))
+                    }
+                    value={averageMonths}
+                    style={{ width: '50px' }}
+                  />
+                  <View>{t('months')}</View>
+                </SpaceBetween>
+              )}
+              {forecastMethod === 'perMonth' && (
+                <SpaceBetween gap={5}>
+                  <View>{t('of past')}</View>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={maxMonths}
+                    onChangeValue={newValue =>
+                      setAverageYears(Number(newValue))
+                    }
+                    value={averageYears}
+                    style={{ width: '50px' }}
+                  />
+                  <View>{t('years')}</View>
+                </SpaceBetween>
+              )}
+              {(forecastMethod === 'minAvgMax' ||
+                forecastMethod === 'monteCarlo') && (
+                <SpaceBetween gap={5}>
+                  <View>{t('based on period')}</View>
+                  <SpaceBetween gap={5}>
+                    <Select
+                      // onChange={newValue =>
+                      //   onChangeDates(
+                      //     ...validateStart(
+                      //       allMonths[allMonths.length - 1].name,
+                      //       newValue,
+                      //       end,
+                      //     ),
+                      //   )
+                      // }
+                      value={start}
+                      defaultLabel={monthUtils.format(start, 'MMMM, yyyy')}
+                      options={allMonths.map(({ name, pretty }) => [
+                        name,
+                        pretty,
+                      ])}
+                    />
+                    <View>{t('to')}</View>
+                    <Select
+                      // onChange={newValue =>
+                      //   onChangeDates(
+                      //     ...validateEnd(
+                      //       allMonths[allMonths.length - 1].name,
+                      //       start,
+                      //       newValue,
+                      //     ),
+                      //   )
+                      // }
+                      value={end}
+                      options={allMonths.map(({ name, pretty }) => [
+                        name,
+                        pretty,
+                      ])}
+                      style={{ marginRight: 10 }}
+                    />
+                  </SpaceBetween>
+                </SpaceBetween>
+              )}
             </SpaceBetween>
           )}
-          {/* {forecastMethod === 'lastMonths' && (
-            <SpaceBetween gap={5}>
-              <View>{t('of past')}</View>
-              <Input
-                onChangeValue={newValue => setAverageMonths(Number(newValue))}
-                value={averageMonths}
-              />
-              <View>{t('months')}</View>
-            </SpaceBetween>
-          )}
-          {forecastMethod === 'perMonth' && (
-            <SpaceBetween gap={5}>
-              <View>{t('of past')}</View>
-              <Input
-                onChangeValue={newValue => setAverageYears(Number(newValue))}
-                value={averageYears}
-              />
-              <View>{t('years')}</View>
-            </SpaceBetween>
-          )}
-          {(forecastMethod === 'minAvgMax' ||
-            forecastMethod === 'monteCarlo') && (
-            <SpaceBetween gap={5}>
-              <View>{t('for period')}</View>
-              <Select
-                // onChange={newValue =>
-                //   onChangeDates(
-                //     ...validateStart(
-                //       allMonths[allMonths.length - 1].name,
-                //       newValue,
-                //       forecastEnd,
-                //     ),
-                //   )
-                // }
-                value={forecastStart}
-                defaultLabel={monthUtils.format(forecastStart, 'MMMM, yyyy')}
-                options={allMonths.map(({ name, pretty }) => [name, pretty])}
-              />
-              <View>{t('to')}</View>
-              <Select
-                // onChange={newValue =>
-                //   onChangeDates(
-                //     ...validateEnd(
-                //       allMonths[allMonths.length - 1].name,
-                //       forecastStart,
-                //       newValue,
-                //     ),
-                //   )
-                // }
-                value={forecastEnd}
-                options={allMonths.map(({ name, pretty }) => [name, pretty])}
-                style={{ marginRight: 10 }}
-              />
-            </SpaceBetween>
-          )} */}
         </SpaceBetween>
       </SpaceBetween>
     </View>
