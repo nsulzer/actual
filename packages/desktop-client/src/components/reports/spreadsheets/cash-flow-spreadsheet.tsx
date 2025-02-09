@@ -88,6 +88,8 @@ export function cashFlowByDate(
     });
     const conditionsOpKey = conditionsOp === 'or' ? '$or' : '$and';
 
+    const queries = [];
+
     function makeQuery() {
       const query = q('transactions')
         .filter({
@@ -120,8 +122,7 @@ export function cashFlowByDate(
         ]);
     }
 
-    return runAll(
-      [
+    queries.push(
         q('transactions')
           .filter({
             [conditionsOpKey]: filters,
@@ -131,8 +132,9 @@ export function cashFlowByDate(
           .calculate({ $sum: '$amount' }),
         makeQuery().filter({ amount: { $gt: 0 } }),
         makeQuery().filter({ amount: { $lt: 0 } }),
-      ],
-      data => {
+      );
+
+    return runAll(queries, data => {
         setData(recalculate(data, start, fixedEnd, isConcise));
       },
     );
