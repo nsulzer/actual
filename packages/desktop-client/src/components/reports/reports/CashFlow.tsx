@@ -22,6 +22,7 @@ import {
   type TimeFrame,
 } from 'loot-core/types/models';
 
+import { useFeatureFlag } from '../../../hooks/useFeatureFlag';
 import { useFilters } from '../../../hooks/useFilters';
 import { useNavigate } from '../../../hooks/useNavigate';
 import { useSyncedPref } from '../../../hooks/useSyncedPref';
@@ -32,6 +33,7 @@ import { MobilePageHeader, Page, PageHeader } from '../../Page';
 import { PrivacyFilter } from '../../PrivacyFilter';
 import { useResponsive } from '../../responsive/ResponsiveProvider';
 import { Change } from '../Change';
+import { ForecastHeader } from '../ForecastHeader';
 import { CashFlowGraph } from '../graphs/CashFlowGraph';
 import { Header } from '../Header';
 import { LoadingIndicator } from '../LoadingIndicator';
@@ -84,6 +86,13 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
     pretty: string;
   }>>(null);
 
+  const [totalMonths, setTotalMonths] = useState(12);
+
+  const [allForecastMonths, setAllForecastMonths] = useState<null | Array<{
+    name: string;
+    pretty: string;
+  }>>(null);
+
   const [initialStart, initialEnd, initialMode] = calculateTimeRange(
     widget?.meta?.timeFrame,
     defaultTimeFrame,
@@ -103,6 +112,30 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
     return numDays > 31 * 3;
   });
 
+  const forecastFeatureFlag = useFeatureFlag('cashflowForecast');
+
+  const allForecastSource = [
+    { name: 'none', pretty: t('None') },
+    { name: 'schedule', pretty: t('Schedule') },
+    { name: 'transactions', pretty: t('Transactions') },
+    { name: 'budget', pretty: t('Budget') },
+  ];
+
+  const allForecastMethods = [
+    { name: 'lastMonths', pretty: t('Average') },
+    { name: 'perMonth', pretty: t('Per-month Average') },
+    { name: 'minAvgMax', pretty: t('Min/Max/Average') },
+    { name: 'monteCarlo', pretty: t('Monte Carlo') },
+  ];
+
+  const [forecastSource, setForecastSource] = useState('none');
+  const [forecastSourceStart, setForecastSourceStart] = useState(initialStart);
+  const [forecastSourceEnd, setForecastSourceEnd] = useState(initialEnd);
+  const [forecastMethod, setForecastMethod] = useState('lastMonths');
+
+  const [averageMonths, setAverageMonths] = useState(2);
+  const [averageYears, setAverageYears] = useState(2);
+
   const params = useMemo(
     () => cashFlowByDate(start, end, isConcise, conditions, conditionsOp),
     [start, end, isConcise, conditions, conditionsOp],
@@ -116,6 +149,11 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         ? monthUtils.monthFromDate(d.parseISO(trans.date))
         : monthUtils.currentMonth();
 
+      const totalMonths = monthUtils.differenceInCalendarMonths(
+        monthUtils.currentMonth(),
+        earliestMonth,
+      );
+
       const allMonths = monthUtils
         .rangeInclusive(earliestMonth, monthUtils.currentMonth())
         .map(month => ({
@@ -124,7 +162,20 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         }))
         .reverse();
 
+      const allForecastMonths = monthUtils
+        .rangeInclusive(
+          earliestMonth,
+          monthUtils.addYears(monthUtils.currentMonth(), 10),
+        )
+        .map(month => ({
+          name: month,
+          pretty: monthUtils.format(month, 'MMMM, yyyy'),
+        }))
+        .reverse();
+
+      setTotalMonths(totalMonths);
       setAllMonths(allMonths);
+      setAllForecastMonths(allForecastMonths);
     }
     run();
   }, []);
@@ -226,7 +277,7 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
       padding={0}
     >
       <Header
-        allMonths={allMonths}
+        allMonths={forecastSource !== 'none' ? allForecastMonths : allMonths}
         start={start}
         end={end}
         earliestTransaction={earliestTransaction}
@@ -253,6 +304,26 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
           )}
         </View>
       </Header>
+      {forecastFeatureFlag && (
+        <ForecastHeader
+          allForecastSource={allForecastSource}
+          allMonths={allMonths}
+          allForecastMethods={allForecastMethods}
+          forecastSource={forecastSource}
+          forecastSourceStart={forecastSourceStart}
+          forecastSourceEnd={forecastSourceEnd}
+          forecastMethod={forecastMethod}
+          averageMonths={averageMonths}
+          averageYears={averageYears}
+          setForecastSource={setForecastSource}
+          setForecastSourceStart={setForecastSourceStart}
+          setForecastSourceEnd={setForecastSourceEnd}
+          setForecastMethod={setForecastMethod}
+          setAverageMonths={setAverageMonths}
+          setAverageYears={setAverageYears}
+          maxMonths={totalMonths}
+        />
+      )}
       <View
         style={{
           backgroundColor: theme.tableBackground,
@@ -344,6 +415,43 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
               picture of how available money fluctuates.
             </Paragraph>
           </Trans>
+          {forecastFeatureFlag && (
+            <Trans>
+              <Paragraph>
+                <strong>Forecasting</strong>
+              </Paragraph>
+              <Paragraph>
+                Forecasts are based on one of three sources:
+                <ul>
+                  <li>
+                    <strong>Schedule</strong> uses your scheduled transactions.
+                  </li>
+                  <li>
+                    <strong>Transactions</strong> and <strong>Budget</strong>{' '}
+                    use your past transactions or budget. These can be used to
+                    predict future cash flow using different models:
+                    <ul>
+                      <li>Average: The average of the last N months.</li>
+                      <li>
+                        Per-month Average: The average of each month the last N
+                        years. The forecast for each June, for example, is based
+                        on the average of all Junes.
+                      </li>
+                      <li>
+                        Min/Max/Average: This generates a range of scenarios,
+                        based on the minimum, maximum, and average of a range of
+                        months.
+                      </li>
+                      <li>
+                        Monte Carlo: this generates a range of scenarios based
+                        on the distribution of past months.
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </Paragraph>
+            </Trans>
+          )}
         </View>
       </View>
     </Page>

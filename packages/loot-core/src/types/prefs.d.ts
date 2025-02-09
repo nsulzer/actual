@@ -2,7 +2,8 @@ export type FeatureFlag =
   | 'goalTemplatesEnabled'
   | 'actionTemplating'
   | 'contextMenus'
-  | 'openidAuth';
+  | 'openidAuth'
+  | 'cashflowForecast';
 
 /**
  * Cross-device preferences. These sync across devices when they are changed.
