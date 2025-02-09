@@ -96,6 +96,12 @@ export function ExperimentalFeatures() {
             >
               <Trans>OpenID authentication method</Trans>
             </FeatureToggle>
+            <FeatureToggle
+              flag="cashflowForecast"
+              feedbackLink="https://github.com/actualbudget/actual/pull/2674"
+            >
+              <Trans>Cashflow Forecasting</Trans>
+            </FeatureToggle>
           </View>
         ) : (
           <Link
