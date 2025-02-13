@@ -137,8 +137,19 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
   const [averageYears, setAverageYears] = useState(2);
 
   const params = useMemo(
-    () => cashFlowByDate(start, end, isConcise, conditions, conditionsOp),
-    [start, end, isConcise, conditions, conditionsOp],
+    () =>
+      cashFlowByDate(
+        start,
+        end,
+        isConcise,
+        conditions,
+        conditionsOp,
+        forecastSource,
+        forecastMethod,
+        forecastSourceStart,
+        forecastSourceEnd,
+      ),
+    [start, end, isConcise, conditions, conditionsOp, forecastSource, forecastMethod, forecastSourceStart, forecastSourceEnd],
   );
   const data = useReport('cash_flow', params);
 

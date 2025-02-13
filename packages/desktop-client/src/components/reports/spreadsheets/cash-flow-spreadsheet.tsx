@@ -4,8 +4,9 @@ import { AlignedText } from '@actual-app/components/aligned-text';
 import * as d from 'date-fns';
 import { t } from 'i18next';
 
+import { runQuery } from 'loot-core/client/query-helpers';
 import { type useSpreadsheet } from 'loot-core/client/SpreadsheetProvider';
-import { send } from 'loot-core/platform/client/fetch';
+import { send, sendCatch } from 'loot-core/platform/client/fetch';
 import * as monthUtils from 'loot-core/shared/months';
 import { q } from 'loot-core/shared/query';
 import { integerToCurrency, integerToAmount } from 'loot-core/shared/util';
@@ -73,11 +74,23 @@ export function cashFlowByDate(
   isConcise: boolean,
   conditions: RuleConditionEntity[] = [],
   conditionsOp: 'and' | 'or',
+  forecastSource: string,
+  forecastMethod: string,
+  forecastSourceStartMonth: string,
+  forecastSourceEndMonth: string,
 ) {
   const start = monthUtils.firstDayOfMonth(startMonth);
-  const end = monthUtils.lastDayOfMonth(endMonth);
+  // if endMonth is in the future, set end to current month, and set forecastEnd to endMonth,
+  // otherwise set end to endMonth, and forecastEnd to null
+  const end = endMonth > monthUtils.currentDay() ? monthUtils.lastDayOfMonth(monthUtils.currentDay()) : monthUtils.lastDayOfMonth(endMonth);
+  const forecastEnd = endMonth > monthUtils.currentDay() ? endMonth : null;
   const fixedEnd =
     end > monthUtils.currentDay() ? monthUtils.currentDay() : end;
+
+  const forecastSourceStart = monthUtils.firstDayOfMonth(forecastSourceStartMonth);
+  const forecastSourceEnd = monthUtils.firstDayOfMonth(forecastSourceEndMonth);
+
+  // const needsMethod = forecastSource === 'transaction' || forecastSource === 'budget';
 
   return async (
     spreadsheet: ReturnType<typeof useSpreadsheet>,
@@ -90,15 +103,15 @@ export function cashFlowByDate(
 
     const queries = [];
 
-    function makeQuery() {
-      const query = q('transactions')
+    function makeQuery(qTable: string, qStatrt: string, qEnd: string) {
+      const query = q(qTable)
         .filter({
           [conditionsOpKey]: filters,
         })
         .filter({
           $and: [
-            { date: { $transform: '$month', $gte: start } },
-            { date: { $transform: '$month', $lte: fixedEnd } },
+            { date: { $transform: '$month', $gte: qStatrt } },
+            { date: { $transform: '$month', $lte: qEnd } },
           ],
           'account.offbudget': false,
         });
@@ -123,16 +136,79 @@ export function cashFlowByDate(
     }
 
     queries.push(
-        q('transactions')
-          .filter({
-            [conditionsOpKey]: filters,
-            date: { $transform: '$month', $lt: start },
-            'account.offbudget': false,
-          })
-          .calculate({ $sum: '$amount' }),
-        makeQuery().filter({ amount: { $gt: 0 } }),
-        makeQuery().filter({ amount: { $lt: 0 } }),
+      q('transactions')
+        .filter({
+          [conditionsOpKey]: filters,
+          date: { $transform: '$month', $lt: start },
+          'account.offbudget': false,
+        })
+        .calculate({ $sum: '$amount' }),    // sarting balance
+      makeQuery('transactions', start, fixedEnd).filter({ amount: { $gt: 0 } }), // income
+      makeQuery('transactions', start, fixedEnd).filter({ amount: { $lt: 0 } }), // expense
+    );
+
+    // for each forecastSource, make a query to get the data
+    if (forecastSource === 'transaction' || forecastSource === 'budget') {
+      queries.push(
+        makeQuery(forecastSource, forecastSourceStart, forecastSourceEnd).filter({ amount: { $gt: 0 } })
+          .filter({ 'category.name': { $notlike: 'Starting Balances' } }),
+        makeQuery(forecastSource, forecastSourceStart, forecastSourceEnd).filter({ amount: { $lt: 0 } })
+          .filter({ 'category.name': { $notlike: 'Starting Balances' } }),
       );
+    }
+
+    if (forecastSource === 'schedule') {
+      let scheduleQuery = q('schedules').select([
+        '*',
+        { isTransfer: '_payee.transfer_acct' },
+        { isAccountOffBudget: '_account.offbudget' },
+        { isPayeeOffBudget: '_payee.transfer_acct.offbudget' },
+      ]);
+
+      type ScheduleFilter = {
+        account: string;
+        payee: string;
+        amount: string;
+      };
+      const scheduleFilters = filters.flatMap((filter: ScheduleFilter) => {
+        if (filter.hasOwnProperty('account')) {
+          const { account } = filter;
+          return [{ _account: account }, { '_payee.transfer_acct': account }];
+        }
+        if (filter.hasOwnProperty('payee')) {
+          const { payee } = filter;
+          return { _payee: payee };
+        }
+        return [];
+      });
+
+      if (scheduleFilters.length > 0) {
+        scheduleQuery = scheduleQuery.filter({
+          $or: [...scheduleFilters],
+        });
+      }
+
+      const { data: scheduledata } = await runQuery(scheduleQuery);
+      
+      let schedules = [];
+      
+      schedules = await Promise.all(
+        scheduledata.map(schedule => {
+          if (typeof schedule._date !== 'string') {
+            return sendCatch('schedule/get-occurrences-to-date', {
+              config: schedule._date,
+              end: forecastEnd,
+            }).then(({ data }) => {
+              schedule._dates = data;
+              return schedule;
+            });
+          } else {
+            schedule._dates = [schedule._date];
+            return schedule;
+          }
+        }),
+      );
+    }
 
     return runAll(queries, data => {
         setData(recalculate(data, start, fixedEnd, isConcise));
@@ -147,9 +223,11 @@ function recalculate(
     Array<{ date: string; isTransfer: string | null; amount: number }>,
     Array<{ date: string; isTransfer: string | null; amount: number }>,
   ],
+  // extend with forecast data
   start: string,
   end: string,
   isConcise: boolean,
+  forecastMethod: string,
 ) {
   const [startingBalance, income, expense] = data;
   const convIncome = income.map(trans => {
@@ -171,6 +249,23 @@ function recalculate(
   let totalExpenses = 0;
   let totalIncome = 0;
   let totalTransfers = 0;
+
+  // add switch cases for forecastSource and forecastMethod to calcualte future graphData
+  // Calculates forecast based on the average transactions/budget in the selected period.
+  if (forecastDataAvailable && forecastMethod === 'lastMonths') {
+  }
+  
+  // Calculates forecast based on the per-month average transactions/budget in the selected period.
+  if (forecastDataAvailable && forecastMethod === 'perMonth') {
+    }
+
+
+    if (forecastDataAvailable && forecastMethod === 'minAvgMax') {
+    }
+
+
+    if (forecastDataAvailable && forecastMethod === 'monteCarlo') {
+    }
 
   const graphData = dates.reduce<{
     expenses: Array<{ x: Date; y: number }>;
