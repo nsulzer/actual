@@ -97,6 +97,9 @@ type CashFlowGraphProps = {
     income: { x: Date; y: number }[];
     balances: { x: Date; y: number }[];
     transfers: { x: Date; y: number }[];
+    // futureBalances: { x: [Date]; y: [number] }[];
+    // futureExpenses: { x: Date; y: number }[];
+    // futureIncome: { x: Date; y: number }[];
   };
   isConcise: boolean;
   showBalance?: boolean;
@@ -117,6 +120,9 @@ export function CashFlowGraph({
     income: graphData.income[idx].y,
     balance: graphData.balances[idx].y,
     transfers: graphData.transfers[idx].y,
+    // futureExpenses: graphData.futureExpenses[idx].y,
+    // futureIncome: graphData.futureIncome[idx].y,
+    // futureBalances: graphData.futureBalances.forEach(b => b[idx].y),
   }));
 
   return (
@@ -183,6 +189,33 @@ export function CashFlowGraph({
               strokeWidth={2}
               animationDuration={ANIMATION_DURATION}
             />
+            {/* <Bar
+              dataKey="futureIncome"
+              stackId="a"
+              fill={theme.reportsBlueFaded}
+              maxBarSize={MAX_BAR_SIZE}
+              animationDuration={ANIMATION_DURATION}
+            /> */}
+            {/* <Bar
+              dataKey="futureExpenses"
+              stackId="a"
+              fill={theme.reportsRedFaded}
+              maxBarSize={MAX_BAR_SIZE}
+              animationDuration={ANIMATION_DURATION}
+            /> */}
+            {/* {data.futureBalances.map((dataKey, index) => (
+              <Line
+                key={index}
+                type="monotone"
+                dataKey={dataKey}
+                dot={false}
+                hide={!showBalance}
+                stroke="url(#showFutureOnly)"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                animationDuration={ANIMATION_DURATION}
+              />
+            ))} */}
           </ComposedChart>
         </ResponsiveContainer>
       )}

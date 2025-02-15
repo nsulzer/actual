@@ -137,8 +137,29 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
   const [averageYears, setAverageYears] = useState(2);
 
   const params = useMemo(
-    () => cashFlowByDate(start, end, isConcise, conditions, conditionsOp),
-    [start, end, isConcise, conditions, conditionsOp],
+    () =>
+      cashFlowByDate(
+        start,
+        end,
+        isConcise,
+        conditions,
+        conditionsOp,
+        forecastSource,
+        forecastMethod,
+        forecastSourceStart,
+        forecastSourceEnd,
+      ),
+    [
+      start,
+      end,
+      isConcise,
+      conditions,
+      conditionsOp,
+      forecastSource,
+      forecastMethod,
+      forecastSourceStart,
+      forecastSourceEnd,
+    ],
   );
   const data = useReport('cash_flow', params);
 
@@ -191,6 +212,19 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
     setEnd(end);
     setMode(mode);
     setIsConcise(isConcise);
+  }
+
+  // FIME: recalculate forecast on any forecast change
+  function onChangeForecast(
+    dataStart: string,
+    dataEnd: string,
+    method: string,
+    source: string,
+  ) {
+    setForecastSourceStart(dataStart);
+    setForecastSourceEnd(dataEnd);
+    setForecastMethod(method);
+    setForecastSource(source);
   }
 
   const navigate = useNavigate();
@@ -322,6 +356,7 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
           setAverageMonths={setAverageMonths}
           setAverageYears={setAverageYears}
           maxMonths={totalMonths}
+          // onChangeForecast={onChangeForecast}
         />
       )}
       <View
